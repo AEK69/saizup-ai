@@ -1,0 +1,121 @@
+{
+  "nav": {
+    "features": "Features",
+    "templates": "Templates",
+    "pricing": "Pricing",
+    "faq": "FAQ",
+    "signIn": "Sign In",
+    "startFree": "Start Free Trial"
+  },
+  "hero": {
+    "badge": "🚀 AI-Powered Video Editing Platform",
+    "title": "Create Viral Short Videos",
+    "titleHighlight": "with AI Magic",
+    "subtitle": "Transform your content into stunning TikTok, Reels & Shorts with AI subtitles, auto-cut, and smart B-roll. Built for Lao, Thai & English creators.",
+    "cta": "Start Creating Free",
+    "ctaSecondary": "Watch Demo",
+    "noCreditCard": "No credit card required"
+  },
+  "features": {
+    "title": "Everything You Need to",
+    "titleHighlight": "Go Viral",
+    "subtitle": "Powerful AI tools designed for short-form content creators",
+    "aiSubtitles": {
+      "title": "AI Subtitles",
+      "description": "Auto-generate word-by-word animated subtitles in Lao, Thai, and English with stunning accuracy."
+    },
+    "silenceRemoval": {
+      "title": "Smart Silence Removal",
+      "description": "Automatically detect and remove dead-air pauses to keep your audience engaged."
+    },
+    "bRoll": {
+      "title": "AI B-Roll",
+      "description": "Intelligently insert matching stock footage, GIFs, and images from our vast library."
+    },
+    "textStyles": {
+      "title": "Dynamic Text Styles",
+      "description": "Choose from dozens of trendy subtitle animation presets and customize colors, fonts, and effects."
+    },
+    "stickers": {
+      "title": "Stickers & Emojis",
+      "description": "Add dynamic sticker overlays and emoji reactions to boost engagement."
+    },
+    "soundEffects": {
+      "title": "Sound Effects",
+      "description": "Enhance your videos with perfectly timed sound effects and audio enhancements."
+    }
+  },
+  "pricing": {
+    "title": "Start Free,",
+    "titleHighlight": "Pay When Ready",
+    "subtitle": "Try all features free for 5 days. No credit card required.",
+    "free": {
+      "name": "Free Trial",
+      "price": "0",
+      "period": "5 days",
+      "features": [
+        "30 minutes AI transcription",
+        "All editing features",
+        "Video export with subtitles",
+        "Lao, Thai & English support",
+        "Browser-based processing"
+      ],
+      "cta": "Start Free Trial"
+    },
+    "pro": {
+      "name": "Pro",
+      "price": "9.99",
+      "period": "month",
+      "popular": "Most Popular",
+      "features": [
+        "300 minutes AI transcription/month",
+        "All editing features",
+        "Priority AI processing",
+        "Advanced text styles",
+        "Premium B-roll library",
+        "No watermark",
+        "Priority support"
+      ],
+      "cta": "Get Pro",
+      "annualSave": "Save 2 months with annual billing"
+    }
+  },
+  "faq": {
+    "title": "Frequently Asked",
+    "titleHighlight": "Questions",
+    "items": [
+      {
+        "question": "What languages does SAIZUP AI support?",
+        "answer": "SAIZUP AI specializes in Lao, Thai, and English language support for AI transcription and subtitles. We're continuously working to add more languages."
+      },
+      {
+        "question": "Is my video data safe?",
+        "answer": "Yes! Your videos are processed entirely in your browser. We only send small audio clips to our AI for transcription. Your video files never leave your device."
+      },
+      {
+        "question": "Can I export videos without a watermark?",
+        "answer": "Free trial exports include a small watermark. Pro subscribers can export completely watermark-free videos."
+      },
+      {
+        "question": "What video formats are supported?",
+        "answer": "SAIZUP AI supports MP4, MOV, WebM, and most common video formats. All exports are optimized for vertical 9:16 format perfect for TikTok, Reels, and Shorts."
+      },
+      {
+        "question": "Do I need to install anything?",
+        "answer": "No! SAIZUP AI runs entirely in your web browser. No downloads or installations required. Just sign up and start editing."
+      }
+    ]
+  },
+  "footer": {
+    "description": "AI-powered video editing platform for short-form content creators. Built for Lao, Thai, and English creators.",
+    "product": "Product",
+    "company": "Company",
+    "legal": "Legal",
+    "terms": "Terms of Service",
+    "privacy": "Privacy Policy",
+    "about": "About Us",
+    "contact": "Contact",
+    "blog": "Blog",
+    "copyright": "© 2024 SAIZUP AI. All rights reserved."
+  }
+}

@@ -1,0 +1,75 @@
+[
+  {
+    "id": "usr_kobx2_owner",
+    "name": "11 ,AEKAPHON XAYYABED",
+    "email": "kobx2.2005@gmail.com",
+    "avatar": "https://lh3.googleusercontent.com/a/ACg8ocIJHiGCGW4EwdGJSmH9PuoLd_V8GllBJpdayfydZdXliXJySLrY=s96-c",
+    "provider": "google",
+    "credits": 9999,
+    "plan": "Owner",
+    "billingCycle": "yearly",
+    "trialDaysRemaining": 365,
+    "status": "active",
+    "createdAt": "2026-10-01T08:00:00.000Z",
+    "lastLoginAt": "2026-10-30T18:03:45.179Z",
+    "totalVideosGenerated": 148,
+    "totalSpentLAK": 0,
+    "isOwner": true,
+    "activityHistory": [
+      {
+        "id": "act_1793383425180",
+        "action": "ເຂົ້າສູ່ລະບົບ (Login)",
+        "detail": "ເຂົ້າສູ່ລະບົບຜ່ານ google",
+        "timestamp": "2026-10-30T18:03:45.179Z"
+      },
+      {
+        "id": "act_1793383415732",
+        "action": "ເຂົ້າສູ່ລະບົບ (Login)",
+        "detail": "ເຂົ້າສູ່ລະບົບຜ່ານ password",
+        "timestamp": "2026-10-30T18:03:35.732Z"
+      },
+      {
+        "id": "act_1793381947921",
+        "action": "ເຂົ້າສູ່ລະບົບ (Login)",
+        "detail": "ເຂົ້າສູ່ລະບົບຜ່ານ password",
+        "timestamp": "2026-10-30T17:39:07.920Z"
+      },
+      {
+        "id": "act_1793381852746",
+        "action": "ເຂົ້າສູ່ລະບົບ (Login)",
+        "detail": "ເຂົ້າສູ່ລະບົບຜ່ານ password",
+        "timestamp": "2026-10-30T17:37:32.746Z"
+      },
+      {
+        "id": "act_1793378535300",
+        "action": "ເຂົ້າສູ່ລະບົບ (Login)",
+        "detail": "ເຂົ້າສູ່ລະບົບຜ່ານ google",
+        "timestamp": "2026-10-30T16:42:15.300Z"
+      },
+      {
+        "id": "act_1793378516457",
+        "action": "ເຂົ້າສູ່ລະບົບ (Login)",
+        "detail": "ເຂົ້າສູ່ລະບົບຜ່ານ google",
+        "timestamp": "2026-10-30T16:41:56.457Z"
+      },
+      {
+        "id": "act-1",
+        "action": "ເຂົ້າສູ່ລະບົບ (Login)",
+        "detail": "ເຂົ້າສູ່ລະບົບດ້ວຍ Google Account ເຈົ້າຂອງຮ້ານ",
+        "timestamp": "2026-10-30T16:31:43.922Z"
+      },
+      {
+        "id": "act-2",
+        "action": "ຕັດຕໍ່ວິດີໂອ (Export)",
+        "detail": "Export ຄລິບ 9:16 ພ້ອມຊັບພາສາລາວ ນີອອນ",
+        "timestamp": "2026-10-30T14:31:43.922Z"
+      },
+      {
+        "id": "act-3",
+        "action": "ຕັ້ງຄ່າລະບົບ (Config)",
+        "detail": "ເຊື່ອມຕໍ່ Google OAuth & Gemini 3.5 Multimodal",
+        "timestamp": "2026-10-30T04:31:43.922Z"
+      }
+    ]
+  }
+]

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F0F13" />
+      <stop offset="100%" stop-color="#1A1C24" />
+    </linearGradient>
+    <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#12E8FF" />
+      <stop offset="100%" stop-color="#5B8FFF" />
+    </linearGradient>
+    <filter id="cyanGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- Background with subtle cyan border -->
+  <rect width="48" height="48" rx="12" fill="url(#bgGrad)" stroke="#12E8FF" stroke-width="1.5" stroke-opacity="0.35" />
+  
+  <!-- Sleek CapCut / LaoSub Studio Glyph -->
+  <path d="M14 16 L24 24 L14 32" stroke="url(#cyanGrad)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#cyanGlow)" />
+  <path d="M34 16 L24 24 L34 32" stroke="url(#cyanGrad)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none" filter="url(#cyanGlow)" />
+  
+  <circle cx="24" cy="24" r="3.5" fill="#12E8FF" filter="url(#cyanGlow)" />
+  <rect x="15" y="38" width="18" height="2.5" rx="1.25" fill="#FFE01B" />
+</svg>
