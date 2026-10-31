@@ -130,81 +130,10 @@ export interface KeyframeItem {
 // =========================================================================
 // INITIAL DEFAULT PROJECT ASSETS (Fresh clean baseline for window open/reset)
 // =========================================================================
-const INITIAL_DEFAULT_SUBTITLES: SubtitleItem[] = [
-  {
-    id: "1",
-    time: 0.5,
-    endTime: 3.5,
-    text: "ຍົກຕົວຢ່າງໃຫ້ເບິ່ງ",
-    translatedText: "ยกตัวอย่างให้ดู",
-    words: [{ text: "ຍົກ" }, { text: "ຕົວຢ່າງ" }, { text: "ໃຫ້" }, { text: "ເບິ່ງ" }],
-  },
-  {
-    id: "2",
-    time: 3.8,
-    endTime: 7.2,
-    text: "ລະບົບຖອດສຽງ ແລະ ໃສ່ຊັບ ອັດຕະໂນມັດ",
-    translatedText: "ระบบถอดเสียง และใส่ซับอัตโนมัติ",
-    words: [{ text: "ລະບົບຖອດສຽງ" }, { text: "ແລະ" }, { text: "ໃສ່ຊັບ" }, { text: "ອັດຕະໂນມັດ" }],
-  },
-  {
-    id: "3",
-    time: 7.5,
-    endTime: 11.5,
-    text: "ສ້າງວິດີໂອສັ້ນ ດ້ວຍ AI ງ່າຍໆ",
-    translatedText: "สร้างวิดีโอสั้น ด้วย AI ง่ายมาก",
-    words: [{ text: "ສ້າງວິດີໂອສັ້ນ" }, { text: "ດ້ວຍ" }, { text: "AI" }, { text: "ງ່າຍໆ" }],
-  },
-  {
-    id: "4",
-    time: 11.8,
-    endTime: 15.0,
-    text: "ປັບແຕ່ງສໄຕລ໌ຊັບລາວ ແບບ CapCut",
-    translatedText: "ปรับแต่งสไตล์ซับลาว แบบ CapCut",
-    words: [{ text: "ປັບແຕ່ງ" }, { text: "ສໄຕລ໌ຊັບລາວ" }, { text: "ແບບ" }, { text: "CapCut" }],
-  },
-];
-
-const INITIAL_DEFAULT_MEDIA_LIST: MediaClipItem[] = [
-  {
-    id: "sample-1",
-    name: "ຍົກຕົວຢ່າງໃຫ້ເບິ່ງ_LaoSpeech.mp4",
-    url: "",
-    thumbUrl:
-      "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='90' viewBox='0 0 160 90'><rect width='160' height='90' fill='%23191c28'/><circle cx='80' cy='45' r='18' fill='%2312E8FF' fill-opacity='0.25'/><polygon points='75,36 92,45 75,54' fill='%2312E8FF'/><rect x='12' y='72' width='55' height='7' rx='3.5' fill='%23FFE01B'/></svg>",
-    duration: 15.0,
-    resolution: "1080x1920 (9:16)",
-  },
-  {
-    id: "sample-2",
-    name: "AI_Marketing_Clip_CapCut.mp4",
-    url: "",
-    thumbUrl:
-      "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='90' viewBox='0 0 160 90'><rect width='160' height='90' fill='%23161722'/><circle cx='80' cy='45' r='18' fill='%235B8FFF' fill-opacity='0.3'/><polygon points='75,36 92,45 75,54' fill='%235B8FFF'/><rect x='12' y='72' width='45' height='7' rx='3.5' fill='%2312E8FF'/></svg>",
-    duration: 12.0,
-    resolution: "1080x1920 (9:16)",
-  },
-];
-
-const INITIAL_DEFAULT_VIDEO_CLIPS: VideoTrackClip[] = [
-  {
-    id: "vclip-1",
-    mediaId: "sample-1",
-    name: "ຍົກຕົວຢ່າງໃຫ້ເບິ່ງ_LaoSpeech",
-    thumbUrl:
-      "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='90' viewBox='0 0 160 90'><rect width='160' height='90' fill='%23191c28'/><polygon points='75,36 92,45 75,54' fill='%2312E8FF'/></svg>",
-    startTime: 0,
-    duration: 15.0,
-    inPoint: 0,
-    outPoint: 15.0,
-  },
-];
-
-const INITIAL_DEFAULT_KEYFRAMES: KeyframeItem[] = [
-  { id: "kf-1", time: 1.0, scale: 100, positionX: 0, positionY: 82, rotation: 0, opacity: 100 },
-  { id: "kf-2", time: 3.5, scale: 125, positionX: 20, positionY: 76, rotation: 4, opacity: 100 },
-  { id: "kf-3", time: 7.0, scale: 95, positionX: -20, positionY: 85, rotation: -3, opacity: 90 },
-];
+const INITIAL_DEFAULT_SUBTITLES: SubtitleItem[] = [];
+const INITIAL_DEFAULT_MEDIA_LIST: MediaClipItem[] = [];
+const INITIAL_DEFAULT_VIDEO_CLIPS: VideoTrackClip[] = [];
+const INITIAL_DEFAULT_KEYFRAMES: KeyframeItem[] = [];
 
 const INITIAL_DEFAULT_COLOR_FILTER = {
   brightness: 100,
@@ -497,7 +426,7 @@ export default function EditorPage() {
   // Subtitle Tab States
   const [subSubTab, setSubSubTab] = useState<"words" | "bulk">("words");
   const [bulkText, setBulkText] = useState("");
-  const [selectedSubId, setSelectedSubId] = useState<string>("1");
+  const [selectedSubId, setSelectedSubId] = useState<string>("");
   const [selectedSubIds, setSelectedSubIds] = useState<string[]>([]);
 
   // =========================================================================
@@ -790,7 +719,7 @@ export default function EditorPage() {
   // Video Track Clips on Timeline (Supports Drag-and-Drop, Split, Trimming)
   const [videoTrackClips, setVideoTrackClips] = useState<VideoTrackClip[]>(INITIAL_DEFAULT_VIDEO_CLIPS);
 
-  const [selectedVideoClipId, setSelectedVideoClipId] = useState<string | null>("vclip-1");
+  const [selectedVideoClipId, setSelectedVideoClipId] = useState<string | null>(null);
 
   // Real-time Keyframe Engine (CapCut Desktop Keyframes)
   const [keyframes, setKeyframes] = useState<KeyframeItem[]>(INITIAL_DEFAULT_KEYFRAMES);
@@ -1467,18 +1396,21 @@ export default function EditorPage() {
       return;
     }
     pushHistorySnapshot("Reset to Default Project");
-    setSubtitles(JSON.parse(JSON.stringify(INITIAL_DEFAULT_SUBTITLES)));
-    setVideoTrackClips(JSON.parse(JSON.stringify(INITIAL_DEFAULT_VIDEO_CLIPS)));
-    setMediaList(JSON.parse(JSON.stringify(INITIAL_DEFAULT_MEDIA_LIST)));
-    setKeyframes(JSON.parse(JSON.stringify(INITIAL_DEFAULT_KEYFRAMES)));
+    setSubtitles([]);
+    setVideoTrackClips([]);
+    setMediaList([]);
+    setKeyframes([]);
     setVideoColorFilter({ ...INITIAL_DEFAULT_COLOR_FILTER });
-    setProjectTitle("ຍົກຕົວຢ່າງໃຫ້ເບິ່ງ_LaoSpeech");
+    setVideoUrl("");
+    setVideoFile(null);
+    setProjectTitle("My Project");
     setCurrentTime(0);
+    setDuration(15);
     if (videoRef.current) {
       videoRef.current.currentTime = 0;
     }
-    setSelectedSubId("1");
-    setSelectedVideoClipId("vclip-1");
+    setSelectedSubId("");
+    setSelectedVideoClipId(null);
     setSelectedKeyframeId(null);
     setVideoFit("cover");
     setAspectRatio("9:16");
@@ -3396,43 +3328,45 @@ export default function EditorPage() {
                   </button>
                 </div>
 
-                {/* Millisecond Sync Nudge (Pillar 2: Fine-tune subtitle cadence with audio waveform) */}
-                <div className="p-3 rounded-2xl bg-[#161824] border border-cyan-500/30 space-y-2 shadow-sm">
-                  <div className="flex items-center justify-between text-[11px] font-bold text-white">
-                    <span className="flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-cyan-400" />
-                      <span>ປັບຈັງຫວະຊັບ (Millisecond Sync Nudge)</span>
-                    </span>
-                    <span className="text-[10px] text-cyan-400 font-mono font-bold">±100ms</span>
+                {/* Millisecond Sync Nudge (Only shown when subtitles exist) */}
+                {subtitles.length > 0 && (
+                  <div className="p-3 rounded-2xl bg-[#161824] border border-cyan-500/30 space-y-2 shadow-sm">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-white">
+                      <span className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>ປັບຈັງຫວະຊັບ (Millisecond Sync Nudge)</span>
+                      </span>
+                      <span className="text-[10px] text-cyan-400 font-mono font-bold">±100ms</span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-1">
+                      {[
+                        { label: "-100ms", ms: -100 },
+                        { label: "-50ms", ms: -50 },
+                        { label: "+50ms", ms: 50 },
+                        { label: "+100ms", ms: 100 },
+                      ].map((btn) => (
+                        <button
+                          key={btn.label}
+                          type="button"
+                          onClick={() => {
+                            const deltaSec = btn.ms / 1000;
+                            setSubtitles((prev) =>
+                              prev.map((s) => ({
+                                ...s,
+                                time: Math.max(0, Number((s.time + deltaSec).toFixed(3))),
+                                endTime: Math.max(0.3, Number((s.endTime + deltaSec).toFixed(3))),
+                              }))
+                            );
+                            showToast(`⚡ ຂຍັບຈັງຫວະຊັບທັງໝົດ: ${btn.label}`);
+                          }}
+                          className="py-1 rounded-lg bg-[#202230] hover:bg-cyan-500 hover:text-black text-slate-200 text-[10px] font-mono font-bold transition-all text-center border border-slate-700/60"
+                        >
+                          {btn.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="grid grid-cols-4 gap-1">
-                    {[
-                      { label: "-100ms", ms: -100 },
-                      { label: "-50ms", ms: -50 },
-                      { label: "+50ms", ms: 50 },
-                      { label: "+100ms", ms: 100 },
-                    ].map((btn) => (
-                      <button
-                        key={btn.label}
-                        type="button"
-                        onClick={() => {
-                          const deltaSec = btn.ms / 1000;
-                          setSubtitles((prev) =>
-                            prev.map((s) => ({
-                              ...s,
-                              time: Math.max(0, Number((s.time + deltaSec).toFixed(3))),
-                              endTime: Math.max(0.3, Number((s.endTime + deltaSec).toFixed(3))),
-                            }))
-                          );
-                          showToast(`⚡ ຂຍັບຈັງຫວະຊັບທັງໝົດ: ${btn.label}`);
-                        }}
-                        className="py-1 rounded-lg bg-[#202230] hover:bg-cyan-500 hover:text-black text-slate-200 text-[10px] font-mono font-bold transition-all text-center border border-slate-700/60"
-                      >
-                        {btn.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                )}
 
                 {/* Subtitle List */}
                 <div className="space-y-1.5">
@@ -3449,118 +3383,130 @@ export default function EditorPage() {
                   </div>
 
                   <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
-                    {subtitles.map((sub, idx) => {
-                      const isCurrent = currentTime >= sub.time && currentTime <= sub.endTime;
-                      return (
-                        <div
-                          key={sub.id}
-                          onClick={() => {
-                            setSelectedSubId(sub.id);
-                            setSelectedVideoClipId(null);
-                            setInspectorMode("text");
-                            seekTo(sub.time);
-                          }}
-                          className={`p-2.5 rounded-xl border text-xs cursor-pointer transition-all ${
-                            selectedSubId === sub.id
-                              ? "bg-cyan-950/40 border-cyan-400 text-white shadow-md shadow-cyan-500/10"
-                              : isCurrent
-                              ? "bg-[#222430] border-yellow-500/50 text-yellow-300"
-                              : "bg-[#1c1e27] border-slate-800 text-slate-300 hover:border-slate-700"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1.5 font-mono">
-                            <span className="font-bold text-cyan-400">#{idx + 1}</span>
-                            <span>{formatTime(sub.time)} ➔ {formatTime(sub.endTime)}</span>
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSubtitles((prev) =>
-                                    prev.map((s) =>
-                                      s.id === sub.id
-                                        ? { ...s, time: Math.max(0, Number((s.time - 0.1).toFixed(2))) }
-                                        : s
-                                    )
-                                  );
-                                }}
-                                className="px-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[9px] text-slate-300"
-                                title="ຂຍັບເລີ່ມກ່ອນ -0.1s"
-                              >
-                                -0.1s
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSubtitles((prev) =>
-                                    prev.map((s) =>
-                                      s.id === sub.id
-                                        ? { ...s, time: Number((s.time + 0.1).toFixed(2)) }
-                                        : s
-                                    )
-                                  );
-                                }}
-                                className="px-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[9px] text-slate-300"
-                                title="ຂຍັບເລີ່ມຊ້າ +0.1s"
-                              >
-                                +0.1s
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSubtitles((prev) => prev.filter((s) => s.id !== sub.id));
-                                  showToast(`ລຶບຊັບ #${idx + 1}`);
-                                }}
-                                className="p-1 text-slate-500 hover:text-rose-400 transition-colors ml-1"
-                                title="ລຶບ"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
+                    {subtitles.length === 0 ? (
+                      <div className="py-8 px-3 text-center border border-dashed border-slate-700/60 rounded-xl bg-[#141622]/50">
+                        <Subtitles className="w-6 h-6 text-slate-500 mx-auto mb-2 opacity-50" />
+                        <p className="text-xs font-semibold text-slate-400">ຍັງບໍ່ມີຊັບໄຕເຕິລເທື່ອ</p>
+                        <p className="text-[10px] text-slate-500 mt-1">
+                          ນຳເຂົ້າວິດີໂອແລ້ວກົດ &quot;Generate Captions&quot; ຫຼື ກົດ &quot;+ ເພີ່ມຊັບ&quot;
+                        </p>
+                      </div>
+                    ) : (
+                      subtitles.map((sub, idx) => {
+                        const isCurrent = currentTime >= sub.time && currentTime <= sub.endTime;
+                        return (
+                          <div
+                            key={sub.id}
+                            onClick={() => {
+                              setSelectedSubId(sub.id);
+                              setSelectedVideoClipId(null);
+                              setInspectorMode("text");
+                              seekTo(sub.time);
+                            }}
+                            className={`p-2.5 rounded-xl border text-xs cursor-pointer transition-all ${
+                              selectedSubId === sub.id
+                                ? "bg-cyan-950/40 border-cyan-400 text-white shadow-md shadow-cyan-500/10"
+                                : isCurrent
+                                ? "bg-[#222430] border-yellow-500/50 text-yellow-300"
+                                : "bg-[#1c1e27] border-slate-800 text-slate-300 hover:border-slate-700"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1.5 font-mono">
+                              <span className="font-bold text-cyan-400">#{idx + 1}</span>
+                              <span>{formatTime(sub.time)} ➔ {formatTime(sub.endTime)}</span>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSubtitles((prev) =>
+                                      prev.map((s) =>
+                                        s.id === sub.id
+                                          ? { ...s, time: Math.max(0, Number((s.time - 0.1).toFixed(2))) }
+                                          : s
+                                      )
+                                    );
+                                  }}
+                                  className="px-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[9px] text-slate-300"
+                                  title="ຂຍັບເລີ່ມກ່ອນ -0.1s"
+                                >
+                                  -0.1s
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSubtitles((prev) =>
+                                      prev.map((s) =>
+                                        s.id === sub.id
+                                          ? { ...s, time: Number((s.time + 0.1).toFixed(2)) }
+                                          : s
+                                      )
+                                    );
+                                  }}
+                                  className="px-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[9px] text-slate-300"
+                                  title="ຂຍັບເລີ່ມຊ້າ +0.1s"
+                                >
+                                  +0.1s
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSubtitles((prev) => prev.filter((s) => s.id !== sub.id));
+                                    showToast(`ລຶບຊັບ #${idx + 1}`);
+                                  }}
+                                  className="p-1 text-slate-500 hover:text-rose-400 transition-colors ml-1"
+                                  title="ລຶບ"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
                             </div>
+                            <input
+                              type="text"
+                              value={sub.text}
+                              onChange={(e) => updateSubtitleText(sub.id, e.target.value)}
+                              className="w-full bg-transparent focus:outline-none focus:border-b border-cyan-400 text-xs font-medium font-['Noto_Sans_Lao'] text-white"
+                            />
                           </div>
-                          <input
-                            type="text"
-                            value={sub.text}
-                            onChange={(e) => updateSubtitleText(sub.id, e.target.value)}
-                            className="w-full bg-transparent focus:outline-none focus:border-b border-cyan-400 text-xs font-medium font-['Noto_Sans_Lao'] text-white"
-                          />
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                    )}
                   </div>
                 </div>
 
                 {/* Subtitle Export Toolbar (.SRT, .ASS, .VTT) */}
-                <div className="p-3 rounded-2xl bg-[#161824] border border-slate-800 space-y-2">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    ດາວໂຫຼດໄຟລ໌ຊັບ (Export Subtitles):
+                {subtitles.length > 0 && (
+                  <div className="p-3 rounded-2xl bg-[#161824] border border-slate-800 space-y-2">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      ດາວໂຫຼດໄຟລ໌ຊັບ (Export Subtitles):
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleExportSubtitles("srt")}
+                        className="py-1.5 rounded-xl bg-[#202230] hover:bg-cyan-500 hover:text-slate-950 text-slate-300 text-[11px] font-bold border border-slate-700/60 transition-all text-center"
+                      >
+                        .SRT
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleExportSubtitles("ass")}
+                        className="py-1.5 rounded-xl bg-[#202230] hover:bg-cyan-500 hover:text-slate-950 text-slate-300 text-[11px] font-bold border border-slate-700/60 transition-all text-center"
+                      >
+                        .ASS
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleExportSubtitles("vtt")}
+                        className="py-1.5 rounded-xl bg-[#202230] hover:bg-cyan-500 hover:text-slate-950 text-slate-300 text-[11px] font-bold border border-slate-700/60 transition-all text-center"
+                      >
+                        .VTT
+                      </button>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => handleExportSubtitles("srt")}
-                      className="py-1.5 rounded-xl bg-[#202230] hover:bg-cyan-500 hover:text-slate-950 text-slate-300 text-[11px] font-bold border border-slate-700/60 transition-all text-center"
-                    >
-                      .SRT
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleExportSubtitles("ass")}
-                      className="py-1.5 rounded-xl bg-[#202230] hover:bg-cyan-500 hover:text-slate-950 text-slate-300 text-[11px] font-bold border border-slate-700/60 transition-all text-center"
-                    >
-                      .ASS
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleExportSubtitles("vtt")}
-                      className="py-1.5 rounded-xl bg-[#202230] hover:bg-cyan-500 hover:text-slate-950 text-slate-300 text-[11px] font-bold border border-slate-700/60 transition-all text-center"
-                    >
-                      .VTT
-                    </button>
-                  </div>
-                </div>
+                )}
               </div>
             )}
 
@@ -4445,8 +4391,17 @@ export default function EditorPage() {
             {/* ========================================================= */}
             {/* 1. TEXT PROPERTY INSPECTOR (Active Subtitle)              */}
             {/* ========================================================= */}
-            {inspectorMode === "text" && (
-              <div className="space-y-3 text-xs">
+            {inspectorMode === "text" &&
+              (!activeSub ? (
+                <div className="py-12 px-4 text-center text-slate-500 space-y-2 border border-dashed border-slate-800 rounded-xl m-2">
+                  <Type className="w-8 h-8 text-slate-600 mx-auto opacity-50" />
+                  <p className="text-xs font-semibold text-slate-400">ຍັງບໍ່ມີຊັບໄຕເຕິລທີ່ເລືອກ</p>
+                  <p className="text-[11px] text-slate-500">
+                    ນຳເຂົ້າວິດີໂອ ຫຼື ກົດ &quot;+ ເພີ່ມຊັບ&quot; ດ້ານຊ້າຍ ເພື່ອເລີ່ມຕົ້ນພິມ ແລະ ປັບແຕ່ງຊັບໄຕເຕິລ
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3 text-xs">
                 {/* 1. Subtitle Editing Textarea */}
                 <div className="space-y-1">
                   <textarea
@@ -5284,7 +5239,7 @@ export default function EditorPage() {
                   )}
                 </div>
               </div>
-            )}
+            ))}
 
             {/* ========================================================= */}
             {/* 2. KEYFRAME PROPERTY INSPECTOR (Live Direct Editing)      */}
@@ -5550,8 +5505,17 @@ export default function EditorPage() {
             {/* ========================================================= */}
             {/* 3. VIDEO CLIP INSPECTOR                                   */}
             {/* ========================================================= */}
-            {inspectorMode === "video" && (
-              <div className="space-y-3.5 text-xs font-sans">
+            {inspectorMode === "video" &&
+              (!videoUrl && videoTrackClips.length === 0 ? (
+                <div className="py-12 px-4 text-center text-slate-500 space-y-2 border border-dashed border-slate-800 rounded-xl m-2">
+                  <Film className="w-8 h-8 text-slate-600 mx-auto opacity-50" />
+                  <p className="text-xs font-semibold text-slate-400">ຍັງບໍ່ມີວິດີໂອເທິງໄທມ໌ໄລນ໌</p>
+                  <p className="text-[11px] text-slate-500">
+                    ກະລຸນານຳເຂົ້າວິດີໂອ (Import Video) ຫຼື ລາກໄຟລ໌ວິດີໂອມາວາງເທິງໄທມ໌ໄລນ໌
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3.5 text-xs font-sans">
                 <div className="p-3.5 rounded-2xl bg-[#161824] border border-slate-800 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-white flex items-center gap-1.5">
@@ -5793,7 +5757,7 @@ export default function EditorPage() {
                   </div>
                 </div>
               </div>
-            )}
+            ))}
 
             {/* ========================================================= */}
             {/* 4. AUDIO TRACK INSPECTOR                                  */}
@@ -6408,30 +6372,26 @@ export default function EditorPage() {
                 </div>
               </div>
 
-              {/* Track 1 Lane: Effects (Vivid badge) */}
+              {/* Track 1 Lane: Effects (Only shown when filter/effect is active and video exists) */}
               <div className="h-7 border-b border-[#262833]/30 relative flex items-center px-1">
-                <div
-                  style={{ width: "35%" }}
-                  className="h-5 rounded px-2 bg-[#312e81] border border-[#4338ca] text-white flex items-center gap-1.5 text-[10px] font-semibold shadow-sm"
-                >
-                  <svg className="w-2.5 h-2.5 text-indigo-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="8" r="4" />
-                    <circle cx="8" cy="16" r="4" />
-                    <circle cx="16" cy="16" r="4" />
-                  </svg>
-                  <span className="truncate">Vivid</span>
-                </div>
+                {videoColorFilter.filterPreset !== "none" && videoTrackClips.length > 0 && (
+                  <div
+                    style={{ width: "100%" }}
+                    className="h-5 rounded px-2 bg-[#312e81] border border-[#4338ca] text-white flex items-center gap-1.5 text-[10px] font-semibold shadow-sm"
+                  >
+                    <svg className="w-2.5 h-2.5 text-indigo-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <circle cx="12" cy="8" r="4" />
+                      <circle cx="8" cy="16" r="4" />
+                      <circle cx="16" cy="16" r="4" />
+                    </svg>
+                    <span className="truncate capitalize">{videoColorFilter.filterPreset}</span>
+                  </div>
+                )}
               </div>
 
-              {/* Track 2 Lane: Stickers (Chalk Graffiti badge) */}
+              {/* Track 2 Lane: Stickers / Overlay Elements (Clean empty track until added) */}
               <div className="h-7 border-b border-[#262833]/30 relative flex items-center px-1">
-                <div
-                  style={{ width: "40%" }}
-                  className="h-5 rounded px-2 bg-[#581c87] border border-[#7e22ce] text-white flex items-center gap-1.5 text-[10px] font-semibold shadow-sm"
-                >
-                  <Star className="w-2.5 h-2.5 text-purple-300 fill-purple-300" />
-                  <span className="truncate">Chalk Graffiti</span>
-                </div>
+                {/* Empty lane until stickers or overlay elements are added */}
               </div>
 
               {/* Track 3 Lane: Subtitles / Text Blocks with Keyframe Diamonds */}
@@ -6584,8 +6544,11 @@ export default function EditorPage() {
                 className="h-14 border-b border-[#262833]/30 relative flex items-center overflow-hidden"
               >
                 {videoTrackClips.length === 0 ? (
-                  <div className="w-full h-full flex items-center justify-center text-[10px] text-slate-500 border border-dashed border-slate-700/60 rounded mx-1">
-                    <span>⇕ ລາກວິດີໂອຈາກເຄື່ອງ ຫຼື Media Bin ມາໃສ່ບ່ອນນີ້ (Drop video here)</span>
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full h-full flex items-center justify-center text-[10px] text-slate-500 border border-dashed border-slate-700/60 rounded mx-1 hover:border-cyan-500/50 hover:text-slate-400 cursor-pointer transition-colors"
+                  >
+                    <span>⇕ ລາກວິດີໂອຈາກເຄື່ອງ ຫຼື ກົດນຳເຂົ້າວິດີໂອມາໃສ່ບ່ອນນີ້ (Drop or Import Video to begin)</span>
                   </div>
                 ) : (
                   videoTrackClips.map((clip) => {
@@ -6627,7 +6590,7 @@ export default function EditorPage() {
                       >
                         {/* Clip Top Banner with Filename & Duration Badge */}
                         <div className="h-4 bg-teal-900/90 px-1.5 flex items-center justify-between text-[9px] font-mono text-teal-100 z-10">
-                          <span className="truncate">{clip.name || "WhatsApp Video 2026-10-29 at 18.22.43.mp4"}</span>
+                          <span className="truncate">{clip.name || "Video Clip"}</span>
                           <span className="bg-teal-950 px-1 rounded text-cyan-300 text-[8px] flex-shrink-0">
                             {formatTime(clip.duration)}
                           </span>
@@ -6735,49 +6698,37 @@ export default function EditorPage() {
                 </div>
               )}
 
-              {/* Track 5 Lane: Video Audio Waveform (Cyan Bars) */}
-              <div className="h-11 border-b border-[#262833]/30 relative bg-[#042f2e]/30 flex flex-col justify-between overflow-hidden">
-                <div className="h-3.5 bg-teal-950/80 px-2 flex items-center text-[8.5px] font-mono text-teal-300">
-                  <span className="truncate">WhatsApp Video 2026-10-29 at 18.22.43</span>
-                </div>
-                {/* Cyan Waveform Bars */}
-                <div className="h-6 flex items-end gap-[2px] px-2 pb-0.5 opacity-90">
-                  {Array.from({ length: 64 }).map((_, barIdx) => {
-                    const waveH = 15 + Math.sin(barIdx * 0.45) * 12 + Math.cos(barIdx * 0.8) * 6;
-                    return (
-                      <div
-                        key={barIdx}
-                        style={{ height: `${Math.max(3, waveH)}px` }}
-                        className="w-1 bg-[#14b8a6] rounded-t-xs flex-shrink-0"
-                      />
-                    );
-                  })}
-                </div>
+              {/* Track 5 Lane: Video Audio Waveform (Only shown when video clip exists) */}
+              <div className="h-11 border-b border-[#262833]/30 relative bg-[#042f2e]/20 flex flex-col justify-between overflow-hidden">
+                {videoTrackClips.length > 0 ? (
+                  <>
+                    <div className="h-3.5 bg-teal-950/80 px-2 flex items-center text-[8.5px] font-mono text-teal-300">
+                      <span className="truncate">{videoTrackClips[0]?.name || videoFile?.name || "Video Audio"}</span>
+                    </div>
+                    {/* Cyan Waveform Bars */}
+                    <div className="h-6 flex items-end gap-[2px] px-2 pb-0.5 opacity-90">
+                      {Array.from({ length: 64 }).map((_, barIdx) => {
+                        const waveH = 15 + Math.sin(barIdx * 0.45) * 12 + Math.cos(barIdx * 0.8) * 6;
+                        return (
+                          <div
+                            key={barIdx}
+                            style={{ height: `${Math.max(3, waveH)}px` }}
+                            className="w-1 bg-[#14b8a6] rounded-t-xs flex-shrink-0"
+                          />
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <div className="h-full flex items-center px-3 text-[9px] text-slate-600 font-mono italic">
+                    {/* Empty until video is loaded */}
+                  </div>
+                )}
               </div>
 
-              {/* Track 6 Lane: BGM Music Waveform (Blue Bars with Orange Beat Markers) */}
-              <div className="h-11 border-b border-[#262833]/30 relative bg-[#172554]/30 flex flex-col justify-between overflow-hidden">
-                <div className="h-3.5 bg-blue-950/80 px-2 flex items-center text-[8.5px] font-mono text-blue-300">
-                  <span className="truncate">Spooky Masquerade Halloween</span>
-                </div>
-                {/* Blue Waveform Bars with Orange Beat Accents at peaks */}
-                <div className="h-6 flex items-end gap-[2px] px-2 pb-0.5 opacity-90">
-                  {Array.from({ length: 64 }).map((_, barIdx) => {
-                    const beatDrop = barIdx % 8 === 0 || barIdx % 8 === 1;
-                    const waveH = beatDrop ? 22 : 8 + Math.sin(barIdx * 0.3) * 6;
-                    return (
-                      <div
-                        key={barIdx}
-                        style={{ height: `${Math.max(4, waveH)}px` }}
-                        className="w-1 bg-[#2563eb] rounded-t-xs flex-shrink-0 relative overflow-hidden"
-                      >
-                        {beatDrop && (
-                          <div className="absolute top-0 inset-x-0 h-1.5 bg-[#f97316]" />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+              {/* Track 6 Lane: BGM Music Waveform */}
+              <div className="h-11 border-b border-[#262833]/30 relative bg-[#172554]/20 flex flex-col justify-between overflow-hidden">
+                {/* Empty until user adds custom BGM music */}
               </div>
 
               {/* CapCut Full-Height Playhead Vertical Needle */}
