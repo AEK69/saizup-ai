@@ -6648,7 +6648,7 @@ export default function EditorPage() {
                             });
                           }}
                           className="absolute right-0 top-0 bottom-0 w-3 bg-cyan-500/40 hover:bg-cyan-400 group-hover:opacity-100 opacity-60 flex items-center justify-center cursor-ew-resize transition-all z-20"
-                          title="Drag to Trim Right (or press W to Playhead)"
+                          title="Drag to Trim Right (or press E to Playhead)"
                         >
                           <div className="w-0.5 h-3 bg-white/90 rounded-full" />
                         </div>
