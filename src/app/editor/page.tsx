@@ -127,6 +127,95 @@ export interface KeyframeItem {
   opacity: number;
 }
 
+// =========================================================================
+// INITIAL DEFAULT PROJECT ASSETS (Fresh clean baseline for window open/reset)
+// =========================================================================
+const INITIAL_DEFAULT_SUBTITLES: SubtitleItem[] = [
+  {
+    id: "1",
+    time: 0.5,
+    endTime: 3.5,
+    text: "ຍົກຕົວຢ່າງໃຫ້ເບິ່ງ",
+    translatedText: "ยกตัวอย่างให้ดู",
+    words: [{ text: "ຍົກ" }, { text: "ຕົວຢ່າງ" }, { text: "ໃຫ້" }, { text: "ເບິ່ງ" }],
+  },
+  {
+    id: "2",
+    time: 3.8,
+    endTime: 7.2,
+    text: "ລະບົບຖອດສຽງ ແລະ ໃສ່ຊັບ ອັດຕະໂນມັດ",
+    translatedText: "ระบบถอดเสียง และใส่ซับอัตโนมัติ",
+    words: [{ text: "ລະບົບຖອດສຽງ" }, { text: "ແລະ" }, { text: "ໃສ່ຊັບ" }, { text: "ອັດຕະໂນມັດ" }],
+  },
+  {
+    id: "3",
+    time: 7.5,
+    endTime: 11.5,
+    text: "ສ້າງວິດີໂອສັ້ນ ດ້ວຍ AI ງ່າຍໆ",
+    translatedText: "สร้างวิดีโอสั้น ด้วย AI ง่ายมาก",
+    words: [{ text: "ສ້າງວິດີໂອສັ້ນ" }, { text: "ດ້ວຍ" }, { text: "AI" }, { text: "ງ່າຍໆ" }],
+  },
+  {
+    id: "4",
+    time: 11.8,
+    endTime: 15.0,
+    text: "ປັບແຕ່ງສໄຕລ໌ຊັບລາວ ແບບ CapCut",
+    translatedText: "ปรับแต่งสไตล์ซับลาว แบบ CapCut",
+    words: [{ text: "ປັບແຕ່ງ" }, { text: "ສໄຕລ໌ຊັບລາວ" }, { text: "ແບບ" }, { text: "CapCut" }],
+  },
+];
+
+const INITIAL_DEFAULT_MEDIA_LIST: MediaClipItem[] = [
+  {
+    id: "sample-1",
+    name: "ຍົກຕົວຢ່າງໃຫ້ເບິ່ງ_LaoSpeech.mp4",
+    url: "",
+    thumbUrl:
+      "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='90' viewBox='0 0 160 90'><rect width='160' height='90' fill='%23191c28'/><circle cx='80' cy='45' r='18' fill='%2312E8FF' fill-opacity='0.25'/><polygon points='75,36 92,45 75,54' fill='%2312E8FF'/><rect x='12' y='72' width='55' height='7' rx='3.5' fill='%23FFE01B'/></svg>",
+    duration: 15.0,
+    resolution: "1080x1920 (9:16)",
+  },
+  {
+    id: "sample-2",
+    name: "AI_Marketing_Clip_CapCut.mp4",
+    url: "",
+    thumbUrl:
+      "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='90' viewBox='0 0 160 90'><rect width='160' height='90' fill='%23161722'/><circle cx='80' cy='45' r='18' fill='%235B8FFF' fill-opacity='0.3'/><polygon points='75,36 92,45 75,54' fill='%235B8FFF'/><rect x='12' y='72' width='45' height='7' rx='3.5' fill='%2312E8FF'/></svg>",
+    duration: 12.0,
+    resolution: "1080x1920 (9:16)",
+  },
+];
+
+const INITIAL_DEFAULT_VIDEO_CLIPS: VideoTrackClip[] = [
+  {
+    id: "vclip-1",
+    mediaId: "sample-1",
+    name: "ຍົກຕົວຢ່າງໃຫ້ເບິ່ງ_LaoSpeech",
+    thumbUrl:
+      "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='90' viewBox='0 0 160 90'><rect width='160' height='90' fill='%23191c28'/><polygon points='75,36 92,45 75,54' fill='%2312E8FF'/></svg>",
+    startTime: 0,
+    duration: 15.0,
+    inPoint: 0,
+    outPoint: 15.0,
+  },
+];
+
+const INITIAL_DEFAULT_KEYFRAMES: KeyframeItem[] = [
+  { id: "kf-1", time: 1.0, scale: 100, positionX: 0, positionY: 82, rotation: 0, opacity: 100 },
+  { id: "kf-2", time: 3.5, scale: 125, positionX: 20, positionY: 76, rotation: 4, opacity: 100 },
+  { id: "kf-3", time: 7.0, scale: 95, positionX: -20, positionY: 85, rotation: -3, opacity: 90 },
+];
+
+const INITIAL_DEFAULT_COLOR_FILTER = {
+  brightness: 100,
+  contrast: 100,
+  saturation: 100,
+  hue: 0,
+  sepia: 0,
+  blur: 0,
+  filterPreset: "none",
+};
+
 const COLOR_PALETTE = [
   { id: "#FFFFFF", name: "White", bg: "bg-white" },
   { id: "#FFD000", name: "Yellow", bg: "bg-yellow-400" },
@@ -456,15 +545,7 @@ export default function EditorPage() {
   // =========================================================================
   // VIDEO COLOR ADJUSTMENT & GRADING STUDIO
   // =========================================================================
-  const [videoColorFilter, setVideoColorFilter] = useState({
-    brightness: 100, // 50% - 150%
-    contrast: 100,   // 50% - 150%
-    saturation: 100, // 0% - 200%
-    hue: 0,          // -180deg to +180deg
-    sepia: 0,        // 0% - 100%
-    blur: 0,         // 0px - 10px
-    filterPreset: "none",
-  });
+  const [videoColorFilter, setVideoColorFilter] = useState({ ...INITIAL_DEFAULT_COLOR_FILTER });
 
   // =========================================================================
   // SUBTITLE DRAGGING & RESIZE HANDLES
@@ -704,47 +785,15 @@ export default function EditorPage() {
   const [videoFit, setVideoFit] = useState<"cover" | "contain">("cover");
 
   // Media Bin State with Video Preview Cards
-  const [mediaList, setMediaList] = useState<MediaClipItem[]>([
-    {
-      id: "sample-1",
-      name: "ຍົກຕົວຢ່າງໃຫ້ເບິ່ງ_LaoSpeech.mp4",
-      url: "",
-      thumbUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='90' viewBox='0 0 160 90'><rect width='160' height='90' fill='%23191c28'/><circle cx='80' cy='45' r='18' fill='%2312E8FF' fill-opacity='0.25'/><polygon points='75,36 92,45 75,54' fill='%2312E8FF'/><rect x='12' y='72' width='55' height='7' rx='3.5' fill='%23FFE01B'/></svg>",
-      duration: 15.0,
-      resolution: "1080x1920 (9:16)",
-    },
-    {
-      id: "sample-2",
-      name: "AI_Marketing_Clip_CapCut.mp4",
-      url: "",
-      thumbUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='90' viewBox='0 0 160 90'><rect width='160' height='90' fill='%23161722'/><circle cx='80' cy='45' r='18' fill='%235B8FFF' fill-opacity='0.3'/><polygon points='75,36 92,45 75,54' fill='%235B8FFF'/><rect x='12' y='72' width='45' height='7' rx='3.5' fill='%2312E8FF'/></svg>",
-      duration: 12.0,
-      resolution: "1080x1920 (9:16)",
-    },
-  ]);
+  const [mediaList, setMediaList] = useState<MediaClipItem[]>(INITIAL_DEFAULT_MEDIA_LIST);
 
   // Video Track Clips on Timeline (Supports Drag-and-Drop, Split, Trimming)
-  const [videoTrackClips, setVideoTrackClips] = useState<VideoTrackClip[]>([
-    {
-      id: "vclip-1",
-      mediaId: "sample-1",
-      name: "ຍົກຕົວຢ່າງໃຫ້ເບິ່ງ_LaoSpeech",
-      thumbUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='90' viewBox='0 0 160 90'><rect width='160' height='90' fill='%23191c28'/><polygon points='75,36 92,45 75,54' fill='%2312E8FF'/></svg>",
-      startTime: 0,
-      duration: 15.0,
-      inPoint: 0,
-      outPoint: 15.0,
-    },
-  ]);
+  const [videoTrackClips, setVideoTrackClips] = useState<VideoTrackClip[]>(INITIAL_DEFAULT_VIDEO_CLIPS);
 
   const [selectedVideoClipId, setSelectedVideoClipId] = useState<string | null>("vclip-1");
 
   // Real-time Keyframe Engine (CapCut Desktop Keyframes)
-  const [keyframes, setKeyframes] = useState<KeyframeItem[]>([
-    { id: "kf-1", time: 1.0, scale: 100, positionX: 0, positionY: 82, rotation: 0, opacity: 100 },
-    { id: "kf-2", time: 3.5, scale: 125, positionX: 20, positionY: 76, rotation: 4, opacity: 100 },
-    { id: "kf-3", time: 7.0, scale: 95, positionX: -20, positionY: 85, rotation: -3, opacity: 90 },
-  ]);
+  const [keyframes, setKeyframes] = useState<KeyframeItem[]>(INITIAL_DEFAULT_KEYFRAMES);
   const [isKeyframePanelOpen, setIsKeyframePanelOpen] = useState(false);
 
   // Interactive Clip Dragging State (Slide Move, Left Trim, Right Trim)
@@ -809,45 +858,17 @@ export default function EditorPage() {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const projectFileInputRef = useRef<HTMLInputElement>(null);
   const refFileInputRef = useRef<HTMLInputElement>(null);
   const timelineTrackRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
 
+  // Export Modal & Saved Draft States
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [hasSavedDraft, setHasSavedDraft] = useState(false);
+
   // Subtitles dataset with clear, high-contrast Lao words (matching user's reference screenshot)
-  const [subtitles, setSubtitles] = useState<SubtitleItem[]>([
-    {
-      id: "1",
-      time: 0.5,
-      endTime: 3.5,
-      text: "ຍົກຕົວຢ່າງໃຫ້ເບິ່ງ",
-      translatedText: "ยกตัวอย่างให้ดู",
-      words: [{ text: "ຍົກ" }, { text: "ຕົວຢ່າງ" }, { text: "ໃຫ້" }, { text: "ເບິ່ງ" }],
-    },
-    {
-      id: "2",
-      time: 3.8,
-      endTime: 7.2,
-      text: "ລະບົບຖອດສຽງ ແລະ ໃສ່ຊັບ ອັດຕະໂນມັດ",
-      translatedText: "ระบบถอดเสียง และใส่ซับอัตโนมัติ",
-      words: [{ text: "ລະບົບຖອດສຽງ" }, { text: "ແລະ" }, { text: "ໃສ່ຊັບ" }, { text: "ອັດຕະໂນມັດ" }],
-    },
-    {
-      id: "3",
-      time: 7.5,
-      endTime: 11.5,
-      text: "ສ້າງວິດີໂອສັ້ນ ດ້ວຍ AI ງ່າຍໆ",
-      translatedText: "สร้างวิดีโอสั้น ด้วย AI ง่ายมาก",
-      words: [{ text: "ສ້າງວິດີໂອສັ້ນ" }, { text: "ດ້ວຍ" }, { text: "AI" }, { text: "ງ່າຍໆ" }],
-    },
-    {
-      id: "4",
-      time: 11.8,
-      endTime: 15.0,
-      text: "ປັບແຕ່ງສໄຕລ໌ຊັບລາວ ແບບ CapCut",
-      translatedText: "ปรับแต่งสไตล์ซับลาว แบบ CapCut",
-      words: [{ text: "ປັບແຕ່ງ" }, { text: "ສໄຕລ໌ຊັບລາວ" }, { text: "ແບບ" }, { text: "CapCut" }],
-    },
-  ]);
+  const [subtitles, setSubtitles] = useState<SubtitleItem[]>(INITIAL_DEFAULT_SUBTITLES);
 
   // Load user from localStorage
   useEffect(() => {
@@ -936,37 +957,15 @@ export default function EditorPage() {
     clipLanguage,
   ]);
 
-  // Restore project from browser localStorage on initial mount
+  // Check if saved draft exists in browser localStorage (do NOT auto-overwrite workspace on open, keep fresh initial default state)
   useEffect(() => {
     try {
       const saved = localStorage.getItem("saizup_capcut_project");
       if (saved) {
-        const p = JSON.parse(saved);
-        if (Array.isArray(p.subtitles) && p.subtitles.length > 0) {
-          setSubtitles(p.subtitles);
-        }
-        if (p.projectTitle) setProjectTitle(p.projectTitle);
-        if (p.activePreset) setActivePreset(p.activePreset);
-        if (p.textColor) setTextColor(p.textColor);
-        if (p.highlightColor) setHighlightColor(p.highlightColor);
-        if (p.selectedFont) setSelectedFont(p.selectedFont);
-        if (p.fontScale) setFontScale(p.fontScale);
-        if (Array.isArray(p.keyframes) && p.keyframes.length > 0) setKeyframes(p.keyframes);
-        if (typeof p.capcutScale === "number") setCapcutScale(p.capcutScale);
-        if (typeof p.capcutPositionX === "number") setCapcutPositionX(p.capcutPositionX);
-        if (typeof p.positionY === "number") setPositionY(p.positionY);
-        if (typeof p.capcutPlaneRotation === "number") setCapcutPlaneRotation(p.capcutPlaneRotation);
-        if (typeof p.blendOpacity === "number") setBlendOpacity(p.blendOpacity);
-        if (typeof p.enableBackground === "boolean") setEnableBackground(p.enableBackground);
-        if (p.bgColor) setBgColor(p.bgColor);
-        if (typeof p.bgOpacity === "number") setBgOpacity(p.bgOpacity);
-        if (typeof p.enableStroke === "boolean") setEnableStroke(p.enableStroke);
-        if (p.strokeColor) setStrokeColor(p.strokeColor);
-        if (p.clipLanguage) setClipLanguage(p.clipLanguage);
-        if (p.savedAt) setLastSavedTime(p.savedAt);
+        setHasSavedDraft(true);
       }
     } catch (e) {
-      console.warn("Restore project error:", e);
+      console.warn("Check saved draft error:", e);
     }
   }, []);
 
@@ -1454,6 +1453,235 @@ export default function EditorPage() {
 
     showToast(`↷ ເຮັດຊ້ຳ (Redo)`);
   }, [redoStack, subtitles, videoTrackClips, keyframes, selectedSubId, selectedVideoClipId, videoColorFilter]);
+
+  // =========================================================================
+  // RESET TO DEFAULT & RESTORE DRAFT ENGINE
+  // =========================================================================
+  const handleResetToInitialDefault = () => {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        "ທ່ານຕ້ອງການຣີເຊັດໂປຣເຈັກເປັນຄ່າເລີ່ມຕົ້ນ (Default) ແທ້ບໍ່?\n(ທຸກການປ່ຽນແປງທີ່ບໍ່ໄດ້ Export ຈະຖືກລ້າງອອກ)"
+      )
+    ) {
+      return;
+    }
+    pushHistorySnapshot("Reset to Default Project");
+    setSubtitles(JSON.parse(JSON.stringify(INITIAL_DEFAULT_SUBTITLES)));
+    setVideoTrackClips(JSON.parse(JSON.stringify(INITIAL_DEFAULT_VIDEO_CLIPS)));
+    setMediaList(JSON.parse(JSON.stringify(INITIAL_DEFAULT_MEDIA_LIST)));
+    setKeyframes(JSON.parse(JSON.stringify(INITIAL_DEFAULT_KEYFRAMES)));
+    setVideoColorFilter({ ...INITIAL_DEFAULT_COLOR_FILTER });
+    setProjectTitle("ຍົກຕົວຢ່າງໃຫ້ເບິ່ງ_LaoSpeech");
+    setCurrentTime(0);
+    if (videoRef.current) {
+      videoRef.current.currentTime = 0;
+    }
+    setSelectedSubId("1");
+    setSelectedVideoClipId("vclip-1");
+    setSelectedKeyframeId(null);
+    setVideoFit("cover");
+    setAspectRatio("9:16");
+    try {
+      localStorage.removeItem("saizup_capcut_project");
+    } catch (_) {}
+    setHasSavedDraft(false);
+    showToast("🔄 ຣີເຊັດເປັນຄ່າເລີ່ມຕົ້ນ (Default) ສຳເລັດແລ້ວ!");
+  };
+
+  const handleRestoreDraft = () => {
+    try {
+      const saved = localStorage.getItem("saizup_capcut_project");
+      if (saved) {
+        const p = JSON.parse(saved);
+        pushHistorySnapshot("Restore Saved Draft");
+        if (Array.isArray(p.subtitles) && p.subtitles.length > 0) {
+          setSubtitles(p.subtitles);
+        }
+        if (p.projectTitle) setProjectTitle(p.projectTitle);
+        if (p.activePreset) setActivePreset(p.activePreset);
+        if (p.textColor) setTextColor(p.textColor);
+        if (p.highlightColor) setHighlightColor(p.highlightColor);
+        if (p.selectedFont) setSelectedFont(p.selectedFont);
+        if (p.fontScale) setFontScale(p.fontScale);
+        if (Array.isArray(p.keyframes) && p.keyframes.length > 0) setKeyframes(p.keyframes);
+        if (typeof p.capcutScale === "number") setCapcutScale(p.capcutScale);
+        if (typeof p.capcutPositionX === "number") setCapcutPositionX(p.capcutPositionX);
+        if (typeof p.positionY === "number") setPositionY(p.positionY);
+        if (typeof p.capcutPlaneRotation === "number") setCapcutPlaneRotation(p.capcutPlaneRotation);
+        if (typeof p.blendOpacity === "number") setBlendOpacity(p.blendOpacity);
+        if (typeof p.enableBackground === "boolean") setEnableBackground(p.enableBackground);
+        if (p.bgColor) setBgColor(p.bgColor);
+        if (typeof p.bgOpacity === "number") setBgOpacity(p.bgOpacity);
+        if (typeof p.enableStroke === "boolean") setEnableStroke(p.enableStroke);
+        if (p.strokeColor) setStrokeColor(p.strokeColor);
+        if (p.clipLanguage) setClipLanguage(p.clipLanguage);
+        if (p.savedAt) setLastSavedTime(p.savedAt);
+        showToast("✅ ກູ້ຄືນສະບັບຮ່າງເກົ່າສຳເລັດແລ້ວ!");
+      }
+    } catch (e) {
+      console.warn("Restore draft error:", e);
+      showToast("❌ ບໍ່ສາມາດກູ້ຄືນສະບັບຮ່າງໄດ້");
+    } finally {
+      setHasSavedDraft(false);
+    }
+  };
+
+  const handleDiscardDraft = () => {
+    try {
+      localStorage.removeItem("saizup_capcut_project");
+    } catch (_) {}
+    setHasSavedDraft(false);
+    showToast("🗑️ ລຶບສະບັບຮ່າງເກົ່າອອກແລ້ວ");
+  };
+
+  // =========================================================================
+  // PROJECT PACKAGE EXPORT & IMPORT (.saizup file)
+  // =========================================================================
+  const handleExportProjectPackage = () => {
+    try {
+      const projectPackage = {
+        format: "saizup-project",
+        version: "1.0",
+        appName: "SAIZUP AI Studio",
+        exportedAt: new Date().toISOString(),
+        projectTitle: projectTitle || "saizup_project",
+        aspectRatio,
+        videoFit,
+        duration,
+        subtitles,
+        videoTrackClips,
+        mediaList,
+        keyframes,
+        videoColorFilter,
+        typography: {
+          activePreset,
+          textColor,
+          highlightColor,
+          selectedFont,
+          fontScale,
+          clipLanguage,
+        },
+        transform: {
+          capcutScale,
+          capcutPositionX,
+          positionY,
+          capcutPlaneRotation,
+          blendOpacity,
+        },
+        styling: {
+          enableBackground,
+          bgColor,
+          bgOpacity,
+          enableStroke,
+          strokeColor,
+        },
+      };
+
+      const jsonString = JSON.stringify(projectPackage, null, 2);
+      const blob = new Blob([jsonString], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const safeTitle = (projectTitle || "saizup_project").replace(/[^\w\u0E80-\u0EFF\u0E00-\u0E7F-]/g, "_");
+      a.href = url;
+      a.download = `${safeTitle}.saizup`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      showToast("💾 Export ໂປຣເຈັກ (.saizup) ສຳເລັດແລ້ວ! ສາມາດນຳກັບມາຕັດຕໍ່ໄດ້ທຸກເວລາ");
+    } catch (err) {
+      console.error("Export project error:", err);
+      showToast("❌ ເກີດຂໍ້ຜິດພາດໃນການ Export ໂປຣເຈັກ");
+    }
+  };
+
+  const handleImportProjectFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        const data = JSON.parse(content);
+
+        if (!data || (!Array.isArray(data.subtitles) && !Array.isArray(data.videoTrackClips))) {
+          showToast("❌ ຮູບແບບໄຟລ໌ບໍ່ຖືກຕ້ອງ (ກະລຸນາເລືອກໄຟລ໌ .saizup ຫຼື .json ຂອງ SAIZUP)");
+          return;
+        }
+
+        pushHistorySnapshot("Import Project Package");
+
+        if (data.projectTitle) setProjectTitle(data.projectTitle);
+        if (data.aspectRatio) setAspectRatio(data.aspectRatio);
+        if (data.videoFit) setVideoFit(data.videoFit);
+        if (typeof data.duration === "number") setDuration(data.duration);
+
+        if (Array.isArray(data.subtitles)) {
+          setSubtitles(data.subtitles);
+          if (data.subtitles.length > 0) setSelectedSubId(data.subtitles[0].id);
+        }
+
+        if (Array.isArray(data.videoTrackClips)) {
+          setVideoTrackClips(data.videoTrackClips);
+          if (data.videoTrackClips.length > 0) setSelectedVideoClipId(data.videoTrackClips[0].id);
+        }
+
+        if (Array.isArray(data.mediaList)) {
+          setMediaList(data.mediaList);
+        }
+
+        if (Array.isArray(data.keyframes)) {
+          setKeyframes(data.keyframes);
+        }
+
+        if (data.videoColorFilter) {
+          setVideoColorFilter(data.videoColorFilter);
+        }
+
+        if (data.typography) {
+          if (data.typography.activePreset) setActivePreset(data.typography.activePreset);
+          if (data.typography.textColor) setTextColor(data.typography.textColor);
+          if (data.typography.highlightColor) setHighlightColor(data.typography.highlightColor);
+          if (data.typography.selectedFont) setSelectedFont(data.typography.selectedFont);
+          if (data.typography.fontScale) setFontScale(data.typography.fontScale);
+          if (data.typography.clipLanguage) setClipLanguage(data.typography.clipLanguage);
+        }
+
+        if (data.transform) {
+          if (typeof data.transform.capcutScale === "number") setCapcutScale(data.transform.capcutScale);
+          if (typeof data.transform.capcutPositionX === "number") setCapcutPositionX(data.transform.capcutPositionX);
+          if (typeof data.transform.positionY === "number") setPositionY(data.transform.positionY);
+          if (typeof data.transform.capcutPlaneRotation === "number") setCapcutPlaneRotation(data.transform.capcutPlaneRotation);
+          if (typeof data.transform.blendOpacity === "number") setBlendOpacity(data.transform.blendOpacity);
+        }
+
+        if (data.styling) {
+          if (typeof data.styling.enableBackground === "boolean") setEnableBackground(data.styling.enableBackground);
+          if (data.styling.bgColor) setBgColor(data.styling.bgColor);
+          if (typeof data.styling.bgOpacity === "number") setBgOpacity(data.styling.bgOpacity);
+          if (typeof data.styling.enableStroke === "boolean") setEnableStroke(data.styling.enableStroke);
+          if (data.styling.strokeColor) setStrokeColor(data.styling.strokeColor);
+        }
+
+        setCurrentTime(0);
+        if (videoRef.current) {
+          videoRef.current.currentTime = 0;
+        }
+
+        showToast(`📂 ນຳເຂົ້າໂປຣເຈັກ "${data.projectTitle || file.name}" ສຳເລັດແລ້ວ! ພ້ອມຕັດຕໍ່ຕໍ່`);
+      } catch (err) {
+        console.error("Failed to parse project file:", err);
+        showToast("❌ ບໍ່ສາມາດອ່ານໄຟລ໌ໂປຣເຈັກນີ້ໄດ້");
+      } finally {
+        e.target.value = "";
+      }
+    };
+
+    reader.readAsText(file);
+  };
 
   // Global Mouse Listener for Dragging / Sliding & Trimming Timeline Video Clips
   useEffect(() => {
@@ -2390,17 +2618,7 @@ export default function EditorPage() {
   const downloadSRT = () => handleExportSubtitles("srt");
 
   const handleExport = () => {
-    if (subtitles.length === 0) {
-      showToast("ກະລຸນາສ້າງຊັບກ່ອນສົ່ງອອກ");
-      return;
-    }
-    setIsExporting(true);
-    setTimeout(() => {
-      setIsExporting(false);
-      setExportComplete(true);
-      downloadSRT();
-      setTimeout(() => setExportComplete(false), 3000);
-    }, 1200);
+    setIsExportModalOpen(true);
   };
 
   const formatTime = (secs: number) => {
@@ -2495,6 +2713,17 @@ export default function EditorPage() {
             title="ຊື່ໂປຣເຈັກ"
           />
 
+          {/* Reset to Default / New Project Button */}
+          <button
+            type="button"
+            onClick={handleResetToInitialDefault}
+            className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-[#1c1e29] border border-slate-700 hover:border-amber-500/60 text-slate-300 hover:text-amber-300 transition-colors"
+            title="ຣີເຊັດເປັນຄ່າເລີ່ມຕົ້ນ (Default State) ແລະ ລ້າງຄລິບເກົ່າ"
+          >
+            <RotateCcw className="w-3 h-3 text-amber-400" />
+            <span className="hidden sm:inline">ໂປຣເຈັກໃໝ່</span>
+          </button>
+
           {/* Save Status Button */}
           <button
             type="button"
@@ -2525,15 +2754,15 @@ export default function EditorPage() {
           )}
         </div>
 
-        {/* Top Right: AI Cutter, Shortcuts, Import, Export */}
-        <div className="flex items-center gap-2">
+        {/* Top Right: AI Cutter, Shortcuts, Import .saizup, Import Video, Export .saizup, Export Video */}
+        <div className="flex items-center gap-1.5 md:gap-2">
           {/* AI Auto-Cutter Button */}
           <button
             onClick={() => setIsAiCutterOpen(true)}
             className="px-2.5 py-1 rounded-md bg-gradient-to-r from-purple-600/30 to-indigo-600/30 hover:from-purple-600/50 hover:to-indigo-600/50 text-purple-300 text-xs font-bold border border-purple-500/40 flex items-center gap-1.5 shadow-sm"
           >
             <Zap className="w-3.5 h-3.5 text-yellow-400" />
-            <span>AI ຕັດຄລິບ</span>
+            <span className="hidden sm:inline">AI ຕັດຄລິບ</span>
           </button>
 
           {/* Keyboard Shortcuts Guide */}
@@ -2545,7 +2774,25 @@ export default function EditorPage() {
             <Keyboard className="w-4 h-4" />
           </button>
 
-          {/* Upload Button */}
+          {/* Project Package Import (.saizup / .json) */}
+          <input
+            type="file"
+            ref={projectFileInputRef}
+            accept=".saizup,.json"
+            onChange={handleImportProjectFile}
+            className="hidden"
+          />
+          <button
+            onClick={() => projectFileInputRef.current?.click()}
+            className="px-2.5 py-1 rounded-md bg-[#1f2333] hover:bg-[#2a3044] text-cyan-300 text-xs font-semibold border border-cyan-500/40 hover:border-cyan-400 flex items-center gap-1.5 transition-all shadow-sm"
+            title="ນຳເຂົ້າໄຟລ໌ໂປຣເຈັກ .saizup ເພື່ອກັບມາຕັດຕໍ່ຄືນໄດ້ທຸກເວລາ"
+          >
+            <FolderOpen className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="hidden sm:inline">ເປີດໂປຣເຈັກ (.saizup)</span>
+            <span className="sm:hidden">.saizup</span>
+          </button>
+
+          {/* Video Media Import */}
           <input
             type="file"
             ref={fileInputRef}
@@ -2556,9 +2803,10 @@ export default function EditorPage() {
           <button
             onClick={() => fileInputRef.current?.click()}
             className="px-2.5 py-1 rounded-md bg-[#252733] hover:bg-[#303342] text-slate-200 text-xs font-medium border border-slate-700/60 flex items-center gap-1"
+            title="ນຳເຂົ້າໄຟລ໌ວິດີໂອໃໝ່"
           >
-            <Upload className="w-3 h-3 text-cyan-400" />
-            <span className="hidden sm:inline">Import</span>
+            <Upload className="w-3 h-3 text-slate-400" />
+            <span className="hidden md:inline">ວິດີໂອ</span>
           </button>
 
           {/* User Account / Google Login Button */}
@@ -2589,26 +2837,46 @@ export default function EditorPage() {
             <span>💎 Pro</span>
           </button>
 
-          {/* Export Button */}
+          {/* Direct 1-Click Export Project (.saizup) */}
+          <button
+            onClick={handleExportProjectPackage}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gradient-to-r from-cyan-600/25 to-blue-600/25 hover:from-cyan-600/40 hover:to-blue-600/40 text-cyan-300 text-xs font-bold border border-cyan-500/50 hover:border-cyan-400 shadow-sm transition-all"
+            title="Export ທຸກຢ່າງໃນໂປຣເຈັກເປັນໄຟລ໌ .saizup ເພື່ອນຳກັບມາຕັດຕໍ່ຄືນໃນເວັບໄດ້ທຸກເວລາ"
+          >
+            <Save className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="hidden lg:inline">Export .saizup</span>
+          </button>
+
+          {/* Export Center Modal Button */}
           <button
             onClick={handleExport}
-            disabled={isExporting}
-            className="px-3.5 py-1 rounded-md text-xs font-bold text-white bg-gradient-to-r from-cyan-500 to-blue-600 hover:opacity-90 shadow-sm flex items-center gap-1"
+            className="px-3.5 py-1 rounded-md text-xs font-bold text-white bg-gradient-to-r from-cyan-500 to-blue-600 hover:opacity-90 shadow-sm flex items-center gap-1.5 transition-all"
+            title="ສົ່ງອອກຜົນງານ (Export Center)"
           >
-            {isExporting ? (
-              <>
-                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>Exporting...</span>
-              </>
-            ) : (
-              <>
-                <Download className="w-3 h-3" />
-                <span>Export</span>
-              </>
-            )}
+            <Download className="w-3.5 h-3.5" />
+            <span>Export</span>
           </button>
         </div>
       </header>
+
+      {/* Recover Saved Draft Banner (Optional, non-intrusive banner if user wants to restore previous draft) */}
+      {hasSavedDraft && (
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-[#1e2029]/95 backdrop-blur-md text-white px-4 py-2 rounded-xl shadow-2xl flex items-center gap-3 text-xs font-medium border border-amber-500/50 animate-fadeIn">
+          <span className="text-amber-400 font-semibold">💡 ພົບເຫັນສະບັບຮ່າງເກົ່າທີ່ບັນທຶກໄວ້</span>
+          <button
+            onClick={handleRestoreDraft}
+            className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold transition"
+          >
+            ກູ້ຄືນໂປຣເຈັກເກົ່າ
+          </button>
+          <button
+            onClick={handleDiscardDraft}
+            className="px-2 py-1 rounded hover:bg-slate-800 text-slate-400 hover:text-white transition"
+          >
+            ລຶບຖິ້ມ
+          </button>
+        </div>
+      )}
 
       {/* Floating Notification Toast */}
       {toastMessage && (
@@ -6758,6 +7026,119 @@ export default function EditorPage() {
                     </span>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Export Center Modal */}
+      {isExportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="bg-[#181a24] border border-slate-700/80 rounded-2xl p-6 w-full max-w-lg shadow-2xl relative text-slate-200">
+            <button
+              onClick={() => setIsExportModalOpen(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+                <Download className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">ສົ່ງອອກຜົນງານ (Export Center)</h3>
+                <p className="text-xs text-slate-400">ເລືອກຮູບແບບການສົ່ງອອກຕາມທີ່ຕ້ອງການ</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {/* 1. Full Editable Project Package (.saizup) */}
+              <div className="p-4 rounded-xl bg-gradient-to-r from-cyan-950/40 via-blue-950/30 to-slate-900 border border-cyan-500/40 hover:border-cyan-400 transition-all flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">💾</span>
+                    <div>
+                      <span className="text-xs font-bold text-cyan-300">ໂປຣເຈັກ SAIZUP (.saizup)</span>
+                      <span className="ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">ແນະນຳ</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      handleExportProjectPackage();
+                      setIsExportModalOpen(false);
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-bold shadow-md shadow-cyan-500/20 flex items-center gap-1.5 transition-all"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>ດາວໂຫຼດ .saizup</span>
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  ບັນທຶກທຸກຢ່າງໃນໂປຣເຈັກ (ຄລິບວິດີໂອ, ຊັບໄຕເຕິລ, ສີ, ຄີຍ໌ເຟຣມ, ການຕັດ). ສາມາດນຳໄຟລ໌ນີ້ກັບມາເປີດຕັດຕໍ່ຄືນໃນເວັບໄຊທ໌ໄດ້ 100%!
+                </p>
+              </div>
+
+              {/* 2. Subtitles (.srt, .ass, .vtt) */}
+              <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition-all flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">📝</span>
+                  <span className="text-xs font-bold text-white">ໄຟລ໌ຊັບໄຕເຕິລ (Subtitle Files)</span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  ສົ່ງອອກຊັບໄຕເຕິລພາສາລາວ/ໄທ ສຳລັບ CapCut, Premiere Pro, DaVinci Resolve ຫຼື YouTube
+                </p>
+                <div className="grid grid-cols-3 gap-2 mt-1">
+                  <button
+                    onClick={() => {
+                      handleExportSubtitles("srt");
+                      setIsExportModalOpen(false);
+                    }}
+                    className="py-1.5 px-2 rounded-lg bg-[#252733] hover:bg-[#323646] text-xs font-semibold text-slate-200 border border-slate-700/60 hover:border-cyan-500/40 transition text-center"
+                  >
+                    .SRT (Standard)
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleExportSubtitles("ass");
+                      setIsExportModalOpen(false);
+                    }}
+                    className="py-1.5 px-2 rounded-lg bg-[#252733] hover:bg-[#323646] text-xs font-semibold text-slate-200 border border-slate-700/60 hover:border-cyan-500/40 transition text-center"
+                  >
+                    .ASS (Stylized)
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleExportSubtitles("vtt");
+                      setIsExportModalOpen(false);
+                    }}
+                    className="py-1.5 px-2 rounded-lg bg-[#252733] hover:bg-[#323646] text-xs font-semibold text-slate-200 border border-slate-700/60 hover:border-cyan-500/40 transition text-center"
+                  >
+                    .VTT (Web)
+                  </button>
+                </div>
+              </div>
+
+              {/* 3. Still Frame (.png) */}
+              <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 hover:border-slate-700 transition-all flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-lg">📸</span>
+                  <div>
+                    <span className="text-xs font-bold text-white">ພາບນິ້ງວິດີໂອ (Still Frame)</span>
+                    <p className="text-[11px] text-slate-400">ບັນທຶກເຟຣມທີ່ຫົວອ່ານ Playhead ກຳລັງຢູ່ເປັນໄຟລ໌ PNG HD</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    handleExportStillFrame();
+                    setIsExportModalOpen(false);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-[#252733] hover:bg-[#323646] text-xs font-semibold text-slate-200 border border-slate-700/60 hover:border-cyan-500/40 transition flex items-center gap-1.5"
+                >
+                  <Camera className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>ບັນທຶກ PNG</span>
+                </button>
               </div>
             </div>
           </div>
