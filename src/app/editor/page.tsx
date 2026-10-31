@@ -93,6 +93,7 @@ export interface SubtitleItem {
   text: string;
   translatedText?: string;
   words: { text: string; active?: boolean }[];
+  groupId?: string;
 }
 
 export interface MediaClipItem {
@@ -408,6 +409,89 @@ export default function EditorPage() {
   const [subSubTab, setSubSubTab] = useState<"words" | "bulk">("words");
   const [bulkText, setBulkText] = useState("");
   const [selectedSubId, setSelectedSubId] = useState<string>("1");
+  const [selectedSubIds, setSelectedSubIds] = useState<string[]>([]);
+
+  // =========================================================================
+  // UNDO / REDO HISTORY ENGINE & SNAPSHOTS
+  // =========================================================================
+  const [undoStack, setUndoStack] = useState<
+    {
+      subtitles: SubtitleItem[];
+      videoTrackClips: VideoTrackClip[];
+      keyframes: KeyframeItem[];
+      selectedSubId: string;
+      selectedVideoClipId: string | null;
+      videoColorFilter: {
+        brightness: number;
+        contrast: number;
+        saturation: number;
+        hue: number;
+        sepia: number;
+        blur: number;
+        filterPreset: string;
+      };
+      label: string;
+    }[]
+  >([]);
+  const [redoStack, setRedoStack] = useState<
+    {
+      subtitles: SubtitleItem[];
+      videoTrackClips: VideoTrackClip[];
+      keyframes: KeyframeItem[];
+      selectedSubId: string;
+      selectedVideoClipId: string | null;
+      videoColorFilter: {
+        brightness: number;
+        contrast: number;
+        saturation: number;
+        hue: number;
+        sepia: number;
+        blur: number;
+        filterPreset: string;
+      };
+      label: string;
+    }[]
+  >([]);
+
+  // =========================================================================
+  // VIDEO COLOR ADJUSTMENT & GRADING STUDIO
+  // =========================================================================
+  const [videoColorFilter, setVideoColorFilter] = useState({
+    brightness: 100, // 50% - 150%
+    contrast: 100,   // 50% - 150%
+    saturation: 100, // 0% - 200%
+    hue: 0,          // -180deg to +180deg
+    sepia: 0,        // 0% - 100%
+    blur: 0,         // 0px - 10px
+    filterPreset: "none",
+  });
+
+  // =========================================================================
+  // SUBTITLE DRAGGING & RESIZE HANDLES
+  // =========================================================================
+  const [draggingSubAction, setDraggingSubAction] = useState<{
+    type: "move" | "trim-left" | "trim-right";
+    subId: string;
+    startX: number;
+    origTime: number;
+    origEndTime: number;
+  } | null>(null);
+
+  // Fullscreen state
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const computeVideoCssFilter = (f: typeof videoColorFilter) => {
+    let s = `brightness(${f.brightness}%) contrast(${f.contrast}%) saturate(${f.saturation}%) hue-rotate(${f.hue}deg)`;
+    if (f.sepia > 0) s += ` sepia(${f.sepia}%)`;
+    if (f.blur > 0) s += ` blur(${f.blur}px)`;
+    if (f.filterPreset === "vivid") s += ` saturate(135%) contrast(115%) brightness(105%)`;
+    else if (f.filterPreset === "cinematic") s += ` contrast(120%) brightness(95%) sepia(15%)`;
+    else if (f.filterPreset === "warm") s += ` sepia(25%) hue-rotate(-10deg) saturate(110%)`;
+    else if (f.filterPreset === "cool") s += ` hue-rotate(15deg) saturate(95%) brightness(102%)`;
+    else if (f.filterPreset === "vintage") s += ` sepia(45%) contrast(90%) brightness(105%)`;
+    else if (f.filterPreset === "bw") s += ` grayscale(100%) contrast(120%)`;
+    return s;
+  };
 
   // Right Inspector Tab States (Kept for compatibility)
   const [inspectorTab, setInspectorTab] = useState<
@@ -1285,7 +1369,93 @@ export default function EditorPage() {
     }
   }, [keyframes, currentTime, currentKfValues, showToast]);
 
-  // Global Mouse Listener for Dragging / Sliding & Trimming Timeline Clips
+  // =========================================================================
+  // UNDO / REDO HISTORY DISPATCHERS
+  // =========================================================================
+  const pushHistorySnapshot = useCallback(
+    (label: string = "Action") => {
+      setUndoStack((prev) => [
+        ...prev.slice(-30),
+        {
+          subtitles: JSON.parse(JSON.stringify(subtitles)),
+          videoTrackClips: JSON.parse(JSON.stringify(videoTrackClips)),
+          keyframes: JSON.parse(JSON.stringify(keyframes)),
+          selectedSubId,
+          selectedVideoClipId,
+          videoColorFilter: { ...videoColorFilter },
+          label,
+        },
+      ]);
+      setRedoStack([]);
+    },
+    [subtitles, videoTrackClips, keyframes, selectedSubId, selectedVideoClipId, videoColorFilter]
+  );
+
+  const handleUndo = useCallback(() => {
+    if (undoStack.length === 0) {
+      showToast("ບໍ່ມີປະຫວັດໃຫ້ຍົກເລີກ (No undo)");
+      return;
+    }
+    const target = undoStack[undoStack.length - 1];
+    const newUndo = undoStack.slice(0, -1);
+
+    setRedoStack((prev) => [
+      ...prev,
+      {
+        subtitles: JSON.parse(JSON.stringify(subtitles)),
+        videoTrackClips: JSON.parse(JSON.stringify(videoTrackClips)),
+        keyframes: JSON.parse(JSON.stringify(keyframes)),
+        selectedSubId,
+        selectedVideoClipId,
+        videoColorFilter: { ...videoColorFilter },
+        label: "Redo",
+      },
+    ]);
+    setUndoStack(newUndo);
+
+    setSubtitles(target.subtitles);
+    setVideoTrackClips(target.videoTrackClips);
+    setKeyframes(target.keyframes);
+    setVideoColorFilter(target.videoColorFilter);
+    if (target.selectedSubId) setSelectedSubId(target.selectedSubId);
+    if (target.selectedVideoClipId) setSelectedVideoClipId(target.selectedVideoClipId);
+
+    showToast(`↶ ຍົກເລີກ: ${target.label}`);
+  }, [undoStack, subtitles, videoTrackClips, keyframes, selectedSubId, selectedVideoClipId, videoColorFilter]);
+
+  const handleRedo = useCallback(() => {
+    if (redoStack.length === 0) {
+      showToast("ບໍ່ມີປະຫວັດໃຫ້ເຮັດຊ້ຳ (No redo)");
+      return;
+    }
+    const target = redoStack[redoStack.length - 1];
+    const newRedo = redoStack.slice(0, -1);
+
+    setUndoStack((prev) => [
+      ...prev,
+      {
+        subtitles: JSON.parse(JSON.stringify(subtitles)),
+        videoTrackClips: JSON.parse(JSON.stringify(videoTrackClips)),
+        keyframes: JSON.parse(JSON.stringify(keyframes)),
+        selectedSubId,
+        selectedVideoClipId,
+        videoColorFilter: { ...videoColorFilter },
+        label: "Undo",
+      },
+    ]);
+    setRedoStack(newRedo);
+
+    setSubtitles(target.subtitles);
+    setVideoTrackClips(target.videoTrackClips);
+    setKeyframes(target.keyframes);
+    setVideoColorFilter(target.videoColorFilter);
+    if (target.selectedSubId) setSelectedSubId(target.selectedSubId);
+    if (target.selectedVideoClipId) setSelectedVideoClipId(target.selectedVideoClipId);
+
+    showToast(`↷ ເຮັດຊ້ຳ (Redo)`);
+  }, [redoStack, subtitles, videoTrackClips, keyframes, selectedSubId, selectedVideoClipId, videoColorFilter]);
+
+  // Global Mouse Listener for Dragging / Sliding & Trimming Timeline Video Clips
   useEffect(() => {
     if (!draggingClipAction) return;
 
@@ -1308,6 +1478,10 @@ export default function EditorPage() {
             if (enableSnapping) {
               if (newStart < 0.2) newStart = 0;
             }
+            if (videoRef.current) {
+              videoRef.current.currentTime = newStart;
+              setCurrentTime(newStart);
+            }
             return {
               ...clip,
               startTime: Number(newStart.toFixed(2)),
@@ -1317,6 +1491,10 @@ export default function EditorPage() {
             newStart = Math.max(0, Math.min(newStart, draggingClipAction.origStartTime + draggingClipAction.origDuration - 0.5));
             const actualDelta = newStart - draggingClipAction.origStartTime;
             const newDur = Math.max(0.5, draggingClipAction.origDuration - actualDelta);
+            if (videoRef.current) {
+              videoRef.current.currentTime = newStart;
+              setCurrentTime(newStart);
+            }
             return {
               ...clip,
               startTime: Number(newStart.toFixed(2)),
@@ -1325,6 +1503,11 @@ export default function EditorPage() {
             };
           } else if (draggingClipAction.type === "trim-right") {
             const newDur = Math.max(0.5, draggingClipAction.origDuration + deltaSec);
+            const currentEnd = clip.startTime + newDur;
+            if (videoRef.current) {
+              videoRef.current.currentTime = currentEnd;
+              setCurrentTime(currentEnd);
+            }
             return {
               ...clip,
               duration: Number(newDur.toFixed(2)),
@@ -1337,6 +1520,7 @@ export default function EditorPage() {
     };
 
     const handleMouseUp = () => {
+      pushHistorySnapshot("Trim Video Clip");
       setDraggingClipAction(null);
     };
 
@@ -1346,7 +1530,87 @@ export default function EditorPage() {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [draggingClipAction, duration, enableSnapping]);
+  }, [draggingClipAction, duration, enableSnapping, pushHistorySnapshot]);
+
+  // Global Mouse Listener for Dragging / Sliding & Trimming Subtitle Clips (With Handles)
+  useEffect(() => {
+    if (!draggingSubAction) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const timelineLaneEl = document.getElementById("timeline-tracks-lanes");
+      if (!timelineLaneEl) return;
+      const rect = timelineLaneEl.getBoundingClientRect();
+      const pxPerSec = rect.width / (duration || 15);
+      if (pxPerSec <= 0) return;
+
+      const deltaPx = e.clientX - draggingSubAction.startX;
+      const deltaSec = deltaPx / pxPerSec;
+
+      setSubtitles((prev) =>
+        prev.map((sub) => {
+          if (sub.id !== draggingSubAction.subId) return sub;
+
+          if (draggingSubAction.type === "move") {
+            const span = draggingSubAction.origEndTime - draggingSubAction.origTime;
+            let newTime = Math.max(0, draggingSubAction.origTime + deltaSec);
+            if (enableSnapping && newTime < 0.1) newTime = 0;
+            const newEndTime = Number((newTime + span).toFixed(2));
+            if (videoRef.current) {
+              videoRef.current.currentTime = newTime;
+              setCurrentTime(newTime);
+            }
+            return {
+              ...sub,
+              time: Number(newTime.toFixed(2)),
+              endTime: newEndTime,
+            };
+          } else if (draggingSubAction.type === "trim-left") {
+            let newTime = Math.max(
+              0,
+              Math.min(
+                draggingSubAction.origTime + deltaSec,
+                draggingSubAction.origEndTime - 0.2
+              )
+            );
+            if (videoRef.current) {
+              videoRef.current.currentTime = newTime;
+              setCurrentTime(newTime);
+            }
+            return {
+              ...sub,
+              time: Number(newTime.toFixed(2)),
+            };
+          } else if (draggingSubAction.type === "trim-right") {
+            let newEndTime = Math.max(
+              draggingSubAction.origTime + 0.2,
+              draggingSubAction.origEndTime + deltaSec
+            );
+            if (videoRef.current) {
+              videoRef.current.currentTime = newEndTime;
+              setCurrentTime(newEndTime);
+            }
+            return {
+              ...sub,
+              endTime: Number(newEndTime.toFixed(2)),
+            };
+          }
+          return sub;
+        })
+      );
+    };
+
+    const handleMouseUp = () => {
+      pushHistorySnapshot("Trim Subtitle");
+      setDraggingSubAction(null);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [draggingSubAction, duration, enableSnapping, pushHistorySnapshot]);
 
   // Video Playback Controls
   const togglePlay = useCallback(() => {
@@ -1424,149 +1688,239 @@ export default function EditorPage() {
     showToast(`ຄວາມໄວວິດີໂອ: ${rate}x`);
   };
 
-  // CapCut Timeline Split Tool (Splits Video Clip & Subtitle at Playhead)
-  const handleSplitVideoClipAtPlayhead = useCallback(() => {
-    // 1. Split Video Track Clip
-    const targetClip = videoTrackClips.find(
+  // =========================================================================
+  // DEDICATED LAYER SPLIT & TRIMMING (Q: Trim Left, W/S: Split, E: Trim Right)
+  // Isolates editing strictly to the currently selected layer!
+  // =========================================================================
+
+  // W / S: Split Clip at Playhead (ແຍກກາງ ບໍ່ເອົາອອກ)
+  const handleSplitAtPlayhead = useCallback(() => {
+    // 1. If Video Track Clip is active, split ONLY this video clip
+    if (selectedVideoClipId) {
+      const targetClip = videoTrackClips.find((c) => c.id === selectedVideoClipId);
+      if (
+        targetClip &&
+        currentTime > targetClip.startTime &&
+        currentTime < targetClip.startTime + targetClip.duration
+      ) {
+        pushHistorySnapshot("Split Video (W)");
+        const offset = currentTime - targetClip.startTime;
+        const clip1: VideoTrackClip = {
+          ...targetClip,
+          id: `${targetClip.id}-pt1`,
+          duration: Number(offset.toFixed(2)),
+          outPoint: Number((targetClip.inPoint + offset).toFixed(2)),
+        };
+
+        const clip2: VideoTrackClip = {
+          ...targetClip,
+          id: `vclip-${Date.now()}`,
+          startTime: Number(currentTime.toFixed(2)),
+          duration: Number((targetClip.duration - offset).toFixed(2)),
+          inPoint: Number((targetClip.inPoint + offset).toFixed(2)),
+        };
+
+        setVideoTrackClips((prev) =>
+          prev
+            .filter((c) => c.id !== targetClip.id)
+            .concat([clip1, clip2])
+            .sort((a, b) => a.startTime - b.startTime)
+        );
+        setSelectedVideoClipId(clip2.id);
+        showToast("✂️ ແຍກກາງຄລິບວິດີໂອ (W) ສຳເລັດ");
+        return;
+      }
+    }
+
+    // 2. If Subtitle is active, split ONLY this subtitle
+    if (selectedSubId) {
+      const targetSub = subtitles.find((s) => s.id === selectedSubId);
+      if (targetSub && currentTime > targetSub.time && currentTime < targetSub.endTime) {
+        pushHistorySnapshot("Split Subtitle (W)");
+        const midWords = Math.max(1, Math.floor((targetSub.words?.length || 2) / 2));
+        const firstHalfWords = (targetSub.words || []).slice(0, midWords);
+        const secondHalfWords = (targetSub.words || []).slice(midWords);
+
+        const firstSub: SubtitleItem = {
+          id: targetSub.id,
+          time: targetSub.time,
+          endTime: Number(currentTime.toFixed(2)),
+          text: firstHalfWords.map((w) => w.text).join(" ") || targetSub.text,
+          words: firstHalfWords.length > 0 ? firstHalfWords : [{ text: targetSub.text }],
+          groupId: targetSub.groupId,
+        };
+
+        const secondSub: SubtitleItem = {
+          id: String(Date.now()),
+          time: Number(currentTime.toFixed(2)),
+          endTime: targetSub.endTime,
+          text: secondHalfWords.map((w) => w.text).join(" ") || targetSub.text,
+          words: secondHalfWords.length > 0 ? secondHalfWords : [{ text: targetSub.text }],
+          groupId: targetSub.groupId,
+        };
+
+        setSubtitles((prev) =>
+          prev
+            .filter((s) => s.id !== targetSub.id)
+            .concat([firstSub, secondSub])
+            .sort((a, b) => a.time - b.time)
+        );
+        setSelectedSubId(secondSub.id);
+        showToast("✂️ ແຍກກາງຊັບ (W) ສຳເລັດ");
+        return;
+      }
+    }
+
+    // 3. Fallback: check what is under playhead on active track
+    const fallbackClip = videoTrackClips.find(
       (c) => currentTime > c.startTime && currentTime < c.startTime + c.duration
     );
-
-    let splitVideoDone = false;
-    if (targetClip) {
-      const offset = currentTime - targetClip.startTime;
+    if (fallbackClip) {
+      pushHistorySnapshot("Split Video (W)");
+      const offset = currentTime - fallbackClip.startTime;
       const clip1: VideoTrackClip = {
-        ...targetClip,
-        id: `${targetClip.id}-pt1`,
+        ...fallbackClip,
+        id: `${fallbackClip.id}-pt1`,
         duration: Number(offset.toFixed(2)),
-        outPoint: Number((targetClip.inPoint + offset).toFixed(2)),
+        outPoint: Number((fallbackClip.inPoint + offset).toFixed(2)),
       };
-
       const clip2: VideoTrackClip = {
-        ...targetClip,
+        ...fallbackClip,
         id: `vclip-${Date.now()}`,
         startTime: Number(currentTime.toFixed(2)),
-        duration: Number((targetClip.duration - offset).toFixed(2)),
-        inPoint: Number((targetClip.inPoint + offset).toFixed(2)),
+        duration: Number((fallbackClip.duration - offset).toFixed(2)),
+        inPoint: Number((fallbackClip.inPoint + offset).toFixed(2)),
       };
-
       setVideoTrackClips((prev) =>
         prev
-          .filter((c) => c.id !== targetClip.id)
+          .filter((c) => c.id !== fallbackClip.id)
           .concat([clip1, clip2])
           .sort((a, b) => a.startTime - b.startTime)
       );
-
       setSelectedVideoClipId(clip2.id);
-      splitVideoDone = true;
+      showToast("✂️ ແຍກກາງຄລິບວິດີໂອ (W) ສຳເລັດ");
+      return;
     }
 
-    // 2. Also Split Subtitle if Playhead is within a subtitle
-    const targetSub = subtitles.find(
-      (s) => currentTime > s.time && currentTime < s.endTime
-    );
-    if (targetSub) {
-      const midWords = Math.max(1, Math.floor(targetSub.words.length / 2));
-      const firstHalfWords = targetSub.words.slice(0, midWords);
-      const secondHalfWords = targetSub.words.slice(midWords);
+    showToast("ກະລຸນາເລືອກຄລິບ ຫຼື ເລື່ອນ Playhead ໄປໃສ່ຕຳແໜ່ງທີ່ຕ້ອງການຕັດ");
+  }, [currentTime, selectedVideoClipId, selectedSubId, videoTrackClips, subtitles, pushHistorySnapshot]);
 
-      const firstSub: SubtitleItem = {
-        id: targetSub.id,
-        time: targetSub.time,
-        endTime: Number(currentTime.toFixed(2)),
-        text: firstHalfWords.map((w) => w.text).join(" "),
-        words: firstHalfWords,
-      };
+  // Backward-compat alias
+  const handleSplitVideoClipAtPlayhead = handleSplitAtPlayhead;
 
-      const secondSub: SubtitleItem = {
-        id: String(Date.now()),
-        time: Number(currentTime.toFixed(2)),
-        endTime: targetSub.endTime,
-        text: secondHalfWords.map((w) => w.text).join(" "),
-        words: secondHalfWords,
-      };
-
-      setSubtitles((prev) =>
-        prev
-          .filter((s) => s.id !== targetSub.id)
-          .concat([firstSub, secondSub])
-          .sort((a, b) => a.time - b.time)
-      );
-    }
-
-    if (splitVideoDone || targetSub) {
-      showToast("✂️ ແຍກຄລິບ & ຊັບ (Split) ສຳເລັດ");
-    } else {
-      showToast("ກະລຸນາເລື່ອນ Playhead ໄປໃສ່ຕຳແໜ່ງທີ່ຕ້ອງການຕັດ");
-    }
-  }, [currentTime, videoTrackClips, subtitles]);
-
-  // Trim Start to Playhead (Q)
+  // Q: Trim Start / Left side out to Playhead (ຕັດຊ້າຍອອກ)
   const handleTrimStartToPlayhead = useCallback(() => {
-    // Trim video clip if selected
+    // 1. If Video Clip selected -> trim ONLY this video clip
     if (selectedVideoClipId) {
-      setVideoTrackClips((prev) =>
-        prev.map((c) => {
-          if (c.id !== selectedVideoClipId) return c;
-          const delta = currentTime - c.startTime;
-          if (delta <= 0 || delta >= c.duration) return c;
-          return {
-            ...c,
-            startTime: Number(currentTime.toFixed(2)),
-            duration: Number((c.duration - delta).toFixed(2)),
-            inPoint: Number((c.inPoint + delta).toFixed(2)),
-          };
-        })
-      );
+      const clip = videoTrackClips.find((c) => c.id === selectedVideoClipId);
+      if (clip && currentTime > clip.startTime && currentTime < clip.startTime + clip.duration) {
+        pushHistorySnapshot("Trim Start Video (Q)");
+        const delta = currentTime - clip.startTime;
+        setVideoTrackClips((prev) =>
+          prev.map((c) => {
+            if (c.id !== selectedVideoClipId) return c;
+            return {
+              ...c,
+              startTime: Number(currentTime.toFixed(2)),
+              duration: Number((c.duration - delta).toFixed(2)),
+              inPoint: Number((c.inPoint + delta).toFixed(2)),
+            };
+          })
+        );
+        showToast("✂️ ຕັດຊ້າຍຄລິບວິດີໂອຮອດ Playhead (Q)");
+        return;
+      }
     }
 
-    // Trim subtitle
-    const targetSub = subtitles.find(
-      (s) => currentTime >= s.time && currentTime <= s.endTime
-    );
-    if (targetSub) {
+    // 2. If Subtitle selected -> trim ONLY this subtitle
+    if (selectedSubId) {
+      const sub = subtitles.find((s) => s.id === selectedSubId);
+      if (sub && currentTime > sub.time && currentTime < sub.endTime) {
+        pushHistorySnapshot("Trim Start Subtitle (Q)");
+        setSubtitles((prev) =>
+          prev.map((s) =>
+            s.id === selectedSubId ? { ...s, time: Number(currentTime.toFixed(2)) } : s
+          )
+        );
+        showToast("✂️ ຕັດຊ້າຍຊັບໄຕເຕີ້ນຮອດ Playhead (Q)");
+        return;
+      }
+    }
+
+    // Fallback: check subtitle or video clip under playhead
+    const subUnder = subtitles.find((s) => currentTime > s.time && currentTime < s.endTime);
+    if (subUnder) {
+      pushHistorySnapshot("Trim Start Subtitle (Q)");
       setSubtitles((prev) =>
-        prev.map((s) =>
-          s.id === targetSub.id ? { ...s, time: Number(currentTime.toFixed(2)) } : s
-        )
+        prev.map((s) => (s.id === subUnder.id ? { ...s, time: Number(currentTime.toFixed(2)) } : s))
       );
+      setSelectedSubId(subUnder.id);
+      showToast("✂️ ຕັດຊ້າຍຊັບໄຕເຕີ້ນ (Q)");
+      return;
     }
-    showToast("✂️ ຕັດຫົວຄລິບຮອດ Playhead (Trim Start)");
-  }, [currentTime, selectedVideoClipId, subtitles]);
+  }, [currentTime, selectedVideoClipId, selectedSubId, videoTrackClips, subtitles, pushHistorySnapshot]);
 
-  // Trim End to Playhead (W)
+  // E: Trim End / Right side out to Playhead (ຕັດຂວາອອກ)
   const handleTrimEndToPlayhead = useCallback(() => {
-    // Trim video clip if selected
+    // 1. If Video Clip selected -> trim ONLY this video clip
     if (selectedVideoClipId) {
-      setVideoTrackClips((prev) =>
-        prev.map((c) => {
-          if (c.id !== selectedVideoClipId) return c;
-          const newDur = currentTime - c.startTime;
-          if (newDur <= 0 || newDur >= c.duration) return c;
-          return {
-            ...c,
-            duration: Number(newDur.toFixed(2)),
-            outPoint: Number((c.inPoint + newDur).toFixed(2)),
-          };
-        })
-      );
+      const clip = videoTrackClips.find((c) => c.id === selectedVideoClipId);
+      if (clip && currentTime > clip.startTime && currentTime < clip.startTime + clip.duration) {
+        pushHistorySnapshot("Trim End Video (E)");
+        const newDur = currentTime - clip.startTime;
+        setVideoTrackClips((prev) =>
+          prev.map((c) => {
+            if (c.id !== selectedVideoClipId) return c;
+            return {
+              ...c,
+              duration: Number(newDur.toFixed(2)),
+              outPoint: Number((c.inPoint + newDur).toFixed(2)),
+            };
+          })
+        );
+        showToast("✂️ ຕັດຂວາຄລິບວິດີໂອຮອດ Playhead (E)");
+        return;
+      }
     }
 
-    // Trim subtitle
-    const targetSub = subtitles.find(
-      (s) => currentTime >= s.time && currentTime <= s.endTime
-    );
-    if (targetSub) {
-      setSubtitles((prev) =>
-        prev.map((s) =>
-          s.id === targetSub.id ? { ...s, endTime: Number(currentTime.toFixed(2)) } : s
-        )
-      );
+    // 2. If Subtitle selected -> trim ONLY this subtitle
+    if (selectedSubId) {
+      const sub = subtitles.find((s) => s.id === selectedSubId);
+      if (sub && currentTime > sub.time && currentTime < sub.endTime) {
+        pushHistorySnapshot("Trim End Subtitle (E)");
+        setSubtitles((prev) =>
+          prev.map((s) =>
+            s.id === selectedSubId ? { ...s, endTime: Number(currentTime.toFixed(2)) } : s
+          )
+        );
+        showToast("✂️ ຕັດຂວາຊັບໄຕເຕີ້ນຮອດ Playhead (E)");
+        return;
+      }
     }
-    showToast("✂️ ຕັດທ້າຍຄລິບຮອດ Playhead (Trim End)");
-  }, [currentTime, selectedVideoClipId, subtitles]);
+
+    // Fallback: check subtitle or video clip under playhead
+    const subUnder = subtitles.find((s) => currentTime > s.time && currentTime < s.endTime);
+    if (subUnder) {
+      pushHistorySnapshot("Trim End Subtitle (E)");
+      setSubtitles((prev) =>
+        prev.map((s) => (s.id === subUnder.id ? { ...s, endTime: Number(currentTime.toFixed(2)) } : s))
+      );
+      setSelectedSubId(subUnder.id);
+      showToast("✂️ ຕັດຂວາຊັບໄຕເຕີ້ນ (E)");
+      return;
+    }
+  }, [currentTime, selectedVideoClipId, selectedSubId, videoTrackClips, subtitles, pushHistorySnapshot]);
 
   // Delete active selection (Del / Trash)
   const handleDeleteActiveSelection = useCallback(() => {
+    pushHistorySnapshot("Delete Selection");
+    if (selectedSubIds.length > 0) {
+      setSubtitles((prev) => prev.filter((s) => !selectedSubIds.includes(s.id)));
+      setSelectedSubIds([]);
+      setSelectedSubId("");
+      showToast(`🗑️ ລຶບ ${selectedSubIds.length} ຊັບໄຕເຕີ້ນທີ່ເລືອກແລ້ວ`);
+      return;
+    }
     if (selectedVideoClipId && videoTrackClips.length > 1) {
       setVideoTrackClips((prev) => prev.filter((c) => c.id !== selectedVideoClipId));
       setSelectedVideoClipId(null);
@@ -1575,9 +1929,36 @@ export default function EditorPage() {
     }
     if (selectedSubId) {
       setSubtitles((prev) => prev.filter((s) => s.id !== selectedSubId));
+      setSelectedSubId("");
       showToast("🗑️ ລຶບຊັບແລ້ວ");
     }
-  }, [selectedVideoClipId, videoTrackClips.length, selectedSubId]);
+  }, [selectedSubIds, selectedVideoClipId, videoTrackClips.length, selectedSubId, pushHistorySnapshot]);
+
+  // Group / Ungroup Subtitles
+  const handleGroupSelectedSubtitles = useCallback(() => {
+    if (selectedSubIds.length < 2) {
+      showToast("ກະລຸນາເລືອກຢ່າງໜ້ອຍ 2 ຊັບ (Shift+Click) ເພື່ອຮວມກຸ່ມ");
+      return;
+    }
+    pushHistorySnapshot("Group Subtitles");
+    const newGroupId = `grp-${Date.now()}`;
+    setSubtitles((prev) =>
+      prev.map((s) => (selectedSubIds.includes(s.id) ? { ...s, groupId: newGroupId } : s))
+    );
+    showToast(`🔗 ຮວມກຸ່ມ ${selectedSubIds.length} ຊັບໄຕເຕີ້ນສຳເລັດ`);
+  }, [selectedSubIds, pushHistorySnapshot]);
+
+  const handleUngroupSelectedSubtitles = useCallback(() => {
+    pushHistorySnapshot("Ungroup Subtitles");
+    setSubtitles((prev) =>
+      prev.map((s) =>
+        selectedSubId === s.id || selectedSubIds.includes(s.id)
+          ? { ...s, groupId: undefined }
+          : s
+      )
+    );
+    showToast("🔓 ແຍກກຸ່ມ (Ungroup) ສຳເລັດ");
+  }, [selectedSubId, selectedSubIds, pushHistorySnapshot]);
 
   const handleAddSubtitleAtPlayhead = () => {
     const newStart = Number(currentTime.toFixed(1));
@@ -1648,9 +2029,15 @@ export default function EditorPage() {
         e.preventDefault();
         setActiveToolMode("select");
         showToast("Select Mode (A)");
+      } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyZ" && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      } else if ((e.ctrlKey || e.metaKey) && (e.code === "KeyY" || (e.shiftKey && e.code === "KeyZ"))) {
+        e.preventDefault();
+        handleRedo();
       } else if (e.code === "KeyS" || e.code === "KeyB" || (e.ctrlKey && e.code === "KeyB") || e.code === "KeyC") {
         e.preventDefault();
-        handleSplitVideoClipAtPlayhead();
+        handleSplitAtPlayhead();
       } else if (e.code === "Delete" || e.code === "Backspace") {
         e.preventDefault();
         handleDeleteActiveSelection();
@@ -1658,6 +2045,9 @@ export default function EditorPage() {
         e.preventDefault();
         handleTrimStartToPlayhead();
       } else if (e.code === "KeyW") {
+        e.preventDefault();
+        handleSplitAtPlayhead();
+      } else if (e.code === "KeyE") {
         e.preventDefault();
         handleTrimEndToPlayhead();
       } else if (e.code === "KeyP") {
@@ -1699,7 +2089,9 @@ export default function EditorPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [
     togglePlay,
-    handleSplitVideoClipAtPlayhead,
+    handleUndo,
+    handleRedo,
+    handleSplitAtPlayhead,
     handleDeleteActiveSelection,
     handleTrimStartToPlayhead,
     handleTrimEndToPlayhead,
@@ -2968,6 +3360,44 @@ export default function EditorPage() {
                 {videoFit === "cover" ? "Crop (ເຕັມຈໍ)" : "Fit (ພໍດີ)"}
               </button>
 
+              {/* Defined Canvas Resolution Badge (ສະແດງຂະໜາດໜ້າຈໍທີ່ກຳນົດ) */}
+              <div
+                className="hidden xl:flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-[#141620] border border-cyan-500/30 text-cyan-300 font-mono text-[10px] font-bold shadow-sm select-none"
+                title="ຂະໜາດໜ້າຈໍທີ່ກຳນົດໃນການຕັດຕໍ່ (Editing Canvas Resolution)"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                <span>
+                  {aspectRatio === "9:16" && "📱 1080 × 1920 (9:16 Shorts/TikTok)"}
+                  {aspectRatio === "16:9" && "🖥️ 1920 × 1080 (16:9 YouTube)"}
+                  {aspectRatio === "1:1" && "⏹️ 1080 × 1080 (1:1 Square)"}
+                  {aspectRatio === "4:5" && "📸 1080 × 1350 (4:5 Portrait)"}
+                </span>
+              </div>
+
+              {/* Fullscreen Mode Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  const el = document.getElementById("canvas-viewport-wrapper");
+                  if (!document.fullscreenElement) {
+                    el?.requestFullscreen?.();
+                    setIsFullscreen(true);
+                  } else {
+                    document.exitFullscreen?.();
+                    setIsFullscreen(false);
+                  }
+                }}
+                className={`p-1 rounded text-slate-300 hover:text-white transition-colors flex items-center gap-1 text-[10px] font-semibold px-2 border ${
+                  isFullscreen
+                    ? "bg-cyan-500 text-black border-cyan-400 font-bold"
+                    : "bg-[#161722] border-slate-800 hover:bg-[#202230]"
+                }`}
+                title="ເປີດວິດີໂອເຕັມຈໍ (Fullscreen)"
+              >
+                <Maximize2 className="w-3 h-3 text-cyan-400" />
+                <span className="hidden sm:inline">ເຕັມຈໍ</span>
+              </button>
+
               {/* CANVAS ZOOM CONTROLS (Zoom In, Zoom Out, Fit, Fill, Percentage) */}
               <div className="flex items-center gap-1 bg-[#161722] p-0.5 rounded-lg border border-slate-800">
                 <button
@@ -3201,6 +3631,9 @@ export default function EditorPage() {
                   onTimeUpdate={handleTimeUpdate}
                   onLoadedMetadata={() => setDuration(videoRef.current?.duration || 15)}
                   onClick={togglePlay}
+                  style={{
+                    filter: computeVideoCssFilter(videoColorFilter),
+                  }}
                   className={`absolute inset-0 w-full h-full ${
                     videoFit === "cover" ? "object-cover" : "object-contain"
                   } cursor-pointer`}
@@ -4935,6 +5368,162 @@ export default function EditorPage() {
                     />
                   </div>
                 </div>
+
+                {/* COLOR & LIGHT ADJUSTMENT STUDIO (ປັບແສງສີວິດີໂອ) */}
+                <div className="p-3.5 rounded-2xl bg-[#161824] border border-cyan-500/30 space-y-3.5 shadow-lg">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="font-bold text-white flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-yellow-400" />
+                      <span>ປັບແສງສີ & ໂທນຮູບເງົາ (Color Grading)</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        pushHistorySnapshot("Reset Color");
+                        setVideoColorFilter({
+                          brightness: 100,
+                          contrast: 100,
+                          saturation: 100,
+                          hue: 0,
+                          sepia: 0,
+                          blur: 0,
+                          filterPreset: "none",
+                        });
+                        showToast("↺ ຄືນຄ່າສີເດີມຮຽບຮ້ອຍ");
+                      }}
+                      className="text-[10px] text-rose-300 hover:text-rose-200 flex items-center gap-1 px-1.5 py-0.5 rounded bg-rose-500/10 hover:bg-rose-500/20 transition-colors"
+                      title="Reset Color Adjustments"
+                    >
+                      <RotateCcw className="w-2.5 h-2.5" />
+                      <span>Reset</span>
+                    </button>
+                  </div>
+
+                  {/* 1-Click Cinematic Filter Presets */}
+                  <div className="space-y-1.5">
+                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                      ໂທນສີສຳເລັດຮູບ (Color Presets):
+                    </div>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {[
+                        { id: "none", label: "Normal" },
+                        { id: "vivid", label: "Vivid" },
+                        { id: "cinematic", label: "Cinema" },
+                        { id: "warm", label: "Warm" },
+                        { id: "cool", label: "Cool" },
+                        { id: "vintage", label: "Retro" },
+                        { id: "bw", label: "B&W" },
+                      ].map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            pushHistorySnapshot(`Preset ${p.label}`);
+                            setVideoColorFilter((prev) => ({ ...prev, filterPreset: p.id }));
+                            showToast(`ໃຊ້ໂທນສີ: ${p.label}`);
+                          }}
+                          className={`py-1.5 px-1 rounded-xl text-[10px] font-bold transition-all text-center border ${
+                            videoColorFilter.filterPreset === p.id
+                              ? "bg-cyan-500 text-slate-950 border-white shadow-md shadow-cyan-500/20 font-black"
+                              : "bg-[#202230] text-slate-300 hover:text-white border-slate-700/60"
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Brightness Slider */}
+                  <div className="space-y-1 pt-1.5 border-t border-slate-800">
+                    <div className="flex items-center justify-between text-[11px] text-slate-300">
+                      <span>ຄວາມສະຫວ່າງ (Brightness)</span>
+                      <span className="text-cyan-400 font-mono font-bold">{videoColorFilter.brightness}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={50}
+                      max={150}
+                      value={videoColorFilter.brightness}
+                      onChange={(e) =>
+                        setVideoColorFilter((prev) => ({ ...prev, brightness: parseInt(e.target.value) }))
+                      }
+                      className="w-full accent-cyan-400 h-1.5 bg-slate-700 rounded-lg cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Contrast Slider */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px] text-slate-300">
+                      <span>ຄວາມຄົມຊັດ (Contrast)</span>
+                      <span className="text-cyan-400 font-mono font-bold">{videoColorFilter.contrast}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={50}
+                      max={150}
+                      value={videoColorFilter.contrast}
+                      onChange={(e) =>
+                        setVideoColorFilter((prev) => ({ ...prev, contrast: parseInt(e.target.value) }))
+                      }
+                      className="w-full accent-cyan-400 h-1.5 bg-slate-700 rounded-lg cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Saturation Slider */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px] text-slate-300">
+                      <span>ຄວາມສົດຂອງສີ (Saturation)</span>
+                      <span className="text-cyan-400 font-mono font-bold">{videoColorFilter.saturation}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={200}
+                      value={videoColorFilter.saturation}
+                      onChange={(e) =>
+                        setVideoColorFilter((prev) => ({ ...prev, saturation: parseInt(e.target.value) }))
+                      }
+                      className="w-full accent-cyan-400 h-1.5 bg-slate-700 rounded-lg cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Hue / Temperature Slider */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px] text-slate-300">
+                      <span>ໂທນອຸນຫະພູມສີ (Hue / Tint)</span>
+                      <span className="text-cyan-400 font-mono font-bold">{videoColorFilter.hue}°</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={-180}
+                      max={180}
+                      value={videoColorFilter.hue}
+                      onChange={(e) =>
+                        setVideoColorFilter((prev) => ({ ...prev, hue: parseInt(e.target.value) }))
+                      }
+                      className="w-full accent-cyan-400 h-1.5 bg-slate-700 rounded-lg cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Blur / Sharpness Slider */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px] text-slate-300">
+                      <span>ຄວາມມົວຍາກັນນ້ອຍ (Blur)</span>
+                      <span className="text-cyan-400 font-mono font-bold">{videoColorFilter.blur}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={10}
+                      value={videoColorFilter.blur}
+                      onChange={(e) =>
+                        setVideoColorFilter((prev) => ({ ...prev, blur: parseInt(e.target.value) }))
+                      }
+                      className="w-full accent-cyan-400 h-1.5 bg-slate-700 rounded-lg cursor-pointer"
+                    />
+                  </div>
+                </div>
               </div>
             )}
 
@@ -5090,9 +5679,11 @@ export default function EditorPage() {
             {/* Undo (Ctrl+Z) */}
             <button
               type="button"
-              onClick={() => showToast("Undo")}
-              title="Undo (Ctrl+Z)"
-              className="p-1.5 rounded hover:bg-[#252838] text-slate-300 hover:text-white transition-colors"
+              onClick={handleUndo}
+              title="Undo ຍົກເລີກ (Ctrl+Z)"
+              className={`p-1.5 rounded hover:bg-[#252838] transition-colors ${
+                undoStack.length > 0 ? "text-cyan-400 hover:text-white" : "text-slate-600 cursor-not-allowed"
+              }`}
             >
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
@@ -5100,42 +5691,44 @@ export default function EditorPage() {
             {/* Redo (Ctrl+Y) */}
             <button
               type="button"
-              onClick={() => showToast("Redo")}
-              title="Redo (Ctrl+Y)"
-              className="p-1.5 rounded hover:bg-[#252838] text-slate-500 hover:text-slate-300 transition-colors"
+              onClick={handleRedo}
+              title="Redo ເຮັດຊ້ຳ (Ctrl+Y / Ctrl+Shift+Z)"
+              className={`p-1.5 rounded hover:bg-[#252838] transition-colors ${
+                redoStack.length > 0 ? "text-cyan-400 hover:text-white" : "text-slate-600 cursor-not-allowed"
+              }`}
             >
               <RotateCw className="w-3.5 h-3.5" />
-            </button>
-
-            {/* Prominent High-Contrast Split Button (S / Ctrl+B) */}
-            <button
-              type="button"
-              onClick={handleSplitVideoClipAtPlayhead}
-              title="ແຍກຄລິບກົງເສັ້ນຫຼິ້ນ (Split Clip - S / Ctrl+B)"
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs shadow-md shadow-cyan-500/20 active:scale-95 transition-all"
-            >
-              <Scissors className="w-3.5 h-3.5" />
-              <span>ແຍກຄລິບ (S)</span>
             </button>
 
             {/* Quick Trim Start (Q) */}
             <button
               type="button"
               onClick={handleTrimStartToPlayhead}
-              title="ຕັດຫົວຄລິບຮອດ Playhead (Trim Start - Q)"
-              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#202330] hover:bg-[#2b2f42] text-slate-200 text-xs font-semibold transition-colors border border-slate-700/60"
+              title="ຕັດຊ້າຍຮອດ Playhead (Trim Left - Q)"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#202330] hover:bg-[#2b2f42] text-slate-200 text-xs font-semibold transition-colors border border-slate-700/60"
             >
-              <span>⇥Q ຕັດໜ້າ</span>
+              <span>⇥Q ຕັດຊ້າຍ</span>
             </button>
 
-            {/* Quick Trim End (W) */}
+            {/* Prominent High-Contrast Split Button (W / S / Ctrl+B) */}
+            <button
+              type="button"
+              onClick={handleSplitAtPlayhead}
+              title="ແຍກກາງຄລິບບໍ່ລຶບ (Split Clip - W / S)"
+              className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs shadow-md shadow-cyan-500/20 active:scale-95 transition-all"
+            >
+              <Scissors className="w-3.5 h-3.5" />
+              <span>✂ W ແຍກກາງ</span>
+            </button>
+
+            {/* Quick Trim End (E) */}
             <button
               type="button"
               onClick={handleTrimEndToPlayhead}
-              title="ຕັດທ້າຍຄລິບຮອດ Playhead (Trim End - W)"
-              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#202330] hover:bg-[#2b2f42] text-slate-200 text-xs font-semibold transition-colors border border-slate-700/60"
+              title="ຕັດຂວາຮອດ Playhead (Trim Right - E)"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#202330] hover:bg-[#2b2f42] text-slate-200 text-xs font-semibold transition-colors border border-slate-700/60"
             >
-              <span>W⇤ ຕັດຫຼັງ</span>
+              <span>E⇤ ຕັດຂວາ</span>
             </button>
 
             {/* Delete Selected (Del) */}
@@ -5148,6 +5741,30 @@ export default function EditorPage() {
               <Trash2 className="w-3.5 h-3.5" />
               <span>ລຶບ</span>
             </button>
+
+            {/* Group Selected (🔗) */}
+            {selectedSubIds.length >= 2 && (
+              <button
+                type="button"
+                onClick={handleGroupSelectedSubtitles}
+                title="ຮວມກຸ່ມຊັບທີ່ເລືອກ (Group Subtitles)"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 text-xs font-bold transition-colors border border-purple-500/40"
+              >
+                <span>🔗 ຮວມກຸ່ມ ({selectedSubIds.length})</span>
+              </button>
+            )}
+
+            {/* Ungroup (🔓) */}
+            {subtitles.find((s) => (s.id === selectedSubId || selectedSubIds.includes(s.id)) && s.groupId) && (
+              <button
+                type="button"
+                onClick={handleUngroupSelectedSubtitles}
+                title="ແຍກກຸ່ມ (Ungroup)"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-bold transition-colors border border-amber-500/40"
+              >
+                <span>🔓 ແຍກກຸ່ມ</span>
+              </button>
+            )}
 
             {/* Keyframe Toggle at Playhead */}
             <button
@@ -5425,12 +6042,30 @@ export default function EditorPage() {
             <div
               id="timeline-tracks-lanes"
               ref={timelineTrackRef}
-              onClick={(e) => {
-                if (!timelineTrackRef.current) return;
-                const rect = timelineTrackRef.current.getBoundingClientRect();
-                const clickX = e.clientX - rect.left;
-                const pct = clickX / rect.width;
-                seekTo(pct * (duration || 15));
+              onMouseDown={(e) => {
+                // If clicking directly on lane empty area or ruler, enable real-time scrubbing
+                const target = e.target as HTMLElement;
+                if (target.closest("[data-no-scrub]") || target.closest(".cursor-grab") || target.closest(".cursor-ew-resize")) {
+                  return;
+                }
+
+                const handleTimelineScrub = (moveEvent: MouseEvent) => {
+                  if (!timelineTrackRef.current) return;
+                  const rect = timelineTrackRef.current.getBoundingClientRect();
+                  const clickX = moveEvent.clientX - rect.left;
+                  const pct = Math.max(0, Math.min(1, clickX / rect.width));
+                  seekTo(pct * (duration || 15));
+                };
+
+                handleTimelineScrub(e.nativeEvent);
+
+                const handleTimelineUp = () => {
+                  window.removeEventListener("mousemove", handleTimelineScrub);
+                  window.removeEventListener("mouseup", handleTimelineUp);
+                };
+
+                window.addEventListener("mousemove", handleTimelineScrub);
+                window.addEventListener("mouseup", handleTimelineUp);
               }}
               onDragOver={(e) => {
                 e.preventDefault();
@@ -5458,8 +6093,28 @@ export default function EditorPage() {
               }}
               className="flex-1 overflow-x-auto relative bg-[#111218] cursor-pointer select-none"
             >
-              {/* Seconds Ruler with Pin Playhead */}
-              <div className="h-6 border-b border-[#262833] relative flex items-center text-[9px] text-slate-500 font-mono">
+              {/* Seconds Ruler with Pin Playhead (Click & Drag to Scrub in Real Time) */}
+              <div
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  const handleRulerScrub = (moveEvent: MouseEvent) => {
+                    const el = document.getElementById("timeline-tracks-lanes");
+                    if (!el) return;
+                    const rect = el.getBoundingClientRect();
+                    const clickX = moveEvent.clientX - rect.left;
+                    const pct = Math.max(0, Math.min(1, clickX / rect.width));
+                    seekTo(pct * (duration || 15));
+                  };
+                  handleRulerScrub(e.nativeEvent);
+                  const handleRulerUp = () => {
+                    window.removeEventListener("mousemove", handleRulerScrub);
+                    window.removeEventListener("mouseup", handleRulerUp);
+                  };
+                  window.addEventListener("mousemove", handleRulerScrub);
+                  window.addEventListener("mouseup", handleRulerUp);
+                }}
+                className="h-6 border-b border-[#262833] relative flex items-center text-[9px] text-slate-500 font-mono cursor-ew-resize hover:bg-[#161822] transition-colors"
+              >
                 {rulerTicks.map(({ sec, leftPct }, i) => (
                   <div
                     key={i}
@@ -5516,27 +6171,89 @@ export default function EditorPage() {
                 {subtitles.map((sub) => {
                   const leftPct = (sub.time / (duration || 15)) * 100;
                   const widthPct = ((sub.endTime - sub.time) / (duration || 15)) * 100;
-                  const isSelected = selectedSubId === sub.id;
+                  const isSelected = selectedSubId === sub.id || selectedSubIds.includes(sub.id);
 
                   return (
                     <div
                       key={sub.id}
-                      onClick={(e) => {
+                      onMouseDown={(e) => {
                         e.stopPropagation();
-                        setSelectedSubId(sub.id);
-                        seekTo(sub.time);
+                        if (e.shiftKey) {
+                          setSelectedSubIds((prev) =>
+                            prev.includes(sub.id) ? prev.filter((id) => id !== sub.id) : [...prev, sub.id]
+                          );
+                        } else {
+                          setSelectedSubId(sub.id);
+                          setSelectedSubIds([sub.id]);
+                          setSelectedVideoClipId(null);
+                          setInspectorMode("text");
+                          seekTo(sub.time);
+                        }
+                        setDraggingSubAction({
+                          type: "move",
+                          subId: sub.id,
+                          startX: e.clientX,
+                          origTime: sub.time,
+                          origEndTime: sub.endTime,
+                        });
                       }}
                       style={{
                         left: `${leftPct}%`,
                         width: `${Math.max(4, widthPct)}%`,
                       }}
-                      className={`absolute h-6 rounded px-2 flex items-center justify-between text-[10px] font-semibold transition-all overflow-hidden border cursor-pointer ${
+                      className={`absolute h-6 rounded flex items-center justify-between text-[10px] font-semibold transition-all border cursor-grab active:cursor-grabbing group select-none ${
                         isSelected
-                          ? "bg-[#c2410c] text-white border-white shadow-[0_0_8px_rgba(234,88,12,0.8)] z-20"
+                          ? "bg-[#c2410c] text-white border-white shadow-[0_0_10px_rgba(234,88,12,0.9)] ring-1 ring-orange-300 z-20"
                           : "bg-[#9a3412]/80 border-[#ea580c]/60 text-white/95 hover:border-orange-400"
                       }`}
                     >
-                      <span className="truncate font-['Noto_Sans_Lao']">{sub.text || "Default text"}</span>
+                      {/* Left Trim Handle (ຍື່ນຫູປັບເລີ່ມຕົ້ນ) */}
+                      <div
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          setSelectedSubId(sub.id);
+                          setDraggingSubAction({
+                            type: "trim-left",
+                            subId: sub.id,
+                            startX: e.clientX,
+                            origTime: sub.time,
+                            origEndTime: sub.endTime,
+                          });
+                        }}
+                        title="ຍື່ນຫູປັບເລີ່ມຕົ້ນ (Trim Start - Q)"
+                        className="w-2 hover:w-3.5 bg-orange-300/40 hover:bg-cyan-400 cursor-ew-resize h-full rounded-l flex items-center justify-center transition-all z-30 opacity-70 group-hover:opacity-100"
+                      >
+                        <div className="w-0.5 h-3 bg-white rounded-full pointer-events-none" />
+                      </div>
+
+                      {/* Subtitle Content & Group Badge */}
+                      <div className="flex-1 px-1.5 flex items-center gap-1 overflow-hidden pointer-events-none">
+                        {sub.groupId && (
+                          <span className="text-[7px] px-1 py-0.2 rounded bg-purple-500 font-mono font-bold text-white flex-shrink-0">
+                            Grp
+                          </span>
+                        )}
+                        <span className="truncate font-['Noto_Sans_Lao']">{sub.text || "Default text"}</span>
+                      </div>
+
+                      {/* Right Trim Handle (ຍື່ນຫູປັບສິ້ນສຸດ) */}
+                      <div
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          setSelectedSubId(sub.id);
+                          setDraggingSubAction({
+                            type: "trim-right",
+                            subId: sub.id,
+                            startX: e.clientX,
+                            origTime: sub.time,
+                            origEndTime: sub.endTime,
+                          });
+                        }}
+                        title="ຍື່ນຫູປັບສິ້ນສຸດ (Trim End - E)"
+                        className="w-2 hover:w-3.5 bg-orange-300/40 hover:bg-cyan-400 cursor-ew-resize h-full rounded-r flex items-center justify-center transition-all z-30 opacity-70 group-hover:opacity-100"
+                      >
+                        <div className="w-0.5 h-3 bg-white rounded-full pointer-events-none" />
+                      </div>
                     </div>
                   );
                 })}

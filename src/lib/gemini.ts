@@ -11,7 +11,9 @@ export interface SubtitleItem {
   time: number; // in seconds
   endTime: number;
   text: string;
+  translatedText?: string;
   words: { text: string; active?: boolean }[];
+  groupId?: string;
 }
 
 export type AiEngineVersion = 'v1' | 'v2' | 'v3';
