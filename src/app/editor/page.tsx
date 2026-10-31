@@ -51,6 +51,7 @@ import {
   Zap,
   Split,
   FolderOpen,
+  FolderPlus,
   X,
   Heart,
   MessageCircle,
@@ -293,15 +294,102 @@ const CAPCUT_PRESET_STYLES = [
 ];
 
 export default function EditorPage() {
-  // Navigation tabs (CapCut style)
-  const [activeLeftTab, setActiveLeftTab] = useState<
-    "media" | "captions" | "styles" | "ai-cutter" | "audio" | "sfx"
-  >("styles");
+  // Navigation tabs (CapCut style: Media, Captions, Audio only - Resource Library)
+  const [activeLeftTab, setActiveLeftTab] = useState<"media" | "captions" | "audio">("captions");
 
   const [editorAiVersion, setEditorAiVersion] = useState<"v1" | "v2" | "v3">("v1");
   const [editorIntervalMode, setEditorIntervalMode] = useState<"sentence" | "30s">("sentence");
 
-  // LaoSub style tabs: ຮູບແບບ | ຟອນ ແລະ ສີ | ຂະໜາດ | ຄຳແປ | ສຽງ | ຂອງຂ້ອຍ
+  // Contextual Property Inspector Mode (Text, Keyframe, Video, Audio)
+  const [inspectorMode, setInspectorMode] = useState<"text" | "keyframe" | "video" | "audio">("text");
+
+  // Selected Keyframe ID (Pillar 1: Select and edit immediately)
+  const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
+
+  // Custom User Assets (Pillar 7: Stored in browser localStorage / IndexedDB)
+  const [customAssets, setCustomAssets] = useState<
+    { id: string; name: string; type: "sfx" | "bgm" | "video"; dataUrl?: string; icon?: string }[]
+  >([]);
+  const customAssetInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Load custom assets from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("saizup_custom_assets");
+      if (saved) {
+        setCustomAssets(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.warn("Failed to load custom assets:", e);
+    }
+  }, []);
+
+  const handleUploadCustomAsset = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const isBgm = file.name.toLowerCase().includes("bgm") || file.name.toLowerCase().includes("music");
+      const newAsset = {
+        id: `asset-${Date.now()}`,
+        name: file.name.replace(/\.[^/.]+$/, ""),
+        type: isBgm ? ("bgm" as const) : ("sfx" as const),
+        dataUrl: reader.result as string,
+        icon: isBgm ? "🎵" : "🔊",
+      };
+      const updated = [newAsset, ...customAssets];
+      setCustomAssets(updated);
+      try {
+        localStorage.setItem("saizup_custom_assets", JSON.stringify(updated.slice(0, 30)));
+      } catch (err) {
+        console.warn("Failed to persist custom asset:", err);
+      }
+      showToast(`✅ ເພີ່ມ "${newAsset.name}" ເຂົ້າ My Assets ແລ້ວ!`);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDeleteCustomAsset = (id: string) => {
+    const updated = customAssets.filter((a) => a.id !== id);
+    setCustomAssets(updated);
+    try {
+      localStorage.setItem("saizup_custom_assets", JSON.stringify(updated));
+    } catch {}
+    showToast("ລຶບໄຟລ໌ອອກຈາກ My Assets ແລ້ວ");
+  };
+
+  const playCustomAudio = (dataUrl?: string) => {
+    if (!dataUrl) return;
+    try {
+      const audio = new window.Audio(dataUrl);
+      audio.play();
+    } catch (err) {
+      console.warn("Play error:", err);
+    }
+  };
+
+  // Accordion toggle states for Text Inspector
+  const [openTextAccordions, setOpenTextAccordions] = useState<{ [key: string]: boolean }>({
+    content: true,
+    presets: true,
+    typography: true,
+    animation: true,
+    strokeShadow: false,
+    background: false,
+    transform: false,
+  });
+
+  const toggleAccordion = (key: string) => {
+    setOpenTextAccordions((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // High-performance direct DOM playhead refs (60fps smooth needle without React re-renders)
+  const playheadPinRef = useRef<HTMLDivElement | null>(null);
+  const playheadNeedleRef = useRef<HTMLDivElement | null>(null);
+  const lastReactTimeUpdateRef = useRef<number>(0);
+
+  // LaoSub style tabs for backward compatibility
   const [styleSubTab, setStyleSubTab] = useState<
     "presets-effects" | "font-color" | "size-spacing" | "translation" | "audio" | "mine"
   >("presets-effects");
@@ -321,13 +409,13 @@ export default function EditorPage() {
   const [bulkText, setBulkText] = useState("");
   const [selectedSubId, setSelectedSubId] = useState<string>("1");
 
-  // Right Inspector Tab States (CapCut Text is Default)
+  // Right Inspector Tab States (Kept for compatibility)
   const [inspectorTab, setInspectorTab] = useState<
     "capcut-text" | "presets-effects" | "font-color" | "size-spacing" | "translation" | "audio" | "mine"
   >("capcut-text");
 
   // =========================================================================
-  // CAPCUT DESKTOP GUIDES, RULERS & STILL FRAME EXPORT
+  // CAPCUT DESKTOP GUIDES, RULERS & STILL FRAME EXPORT (Default Clean Off)
   // =========================================================================
   const [showRulers, setShowRulers] = useState(false);
   const [showGuides, setShowGuides] = useState(false);
@@ -454,46 +542,53 @@ export default function EditorPage() {
     setIsTranslating(true);
     setShowBilingual(true);
     try {
-      const res = await fetch("/api/translate", {
+      const srcLang = clipLanguage === "th" ? "th" : "lo";
+      const tgtLang = clipLanguage === "th" ? "lo" : "th";
+      const res = await fetch("/api/ai/translate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          texts: subtitles.map((s) => s.text),
-          sourceLang: "lo",
-          targetLang: "th",
+          subtitles: subtitles.map((s) => ({
+            id: s.id,
+            time: s.time,
+            endTime: s.endTime,
+            text: s.text,
+          })),
+          sourceLang: srcLang,
+          targetLang: tgtLang,
         }),
       });
-      if (res.ok) {
-        const resText = await res.text();
-        let data: any = {};
-        try {
-          data = resText ? JSON.parse(resText) : {};
-        } catch {
-          data = {};
-        }
-        if (data.translations && Array.isArray(data.translations)) {
-          setSubtitles((prev) =>
-            prev.map((s, idx) => ({
-              ...s,
-              translatedText: data.translations[idx] || s.translatedText,
-            }))
-          );
-          showToast("ແປຊັບສຳເລັດແລ້ວ!");
-        }
+      const resText = await res.text();
+      let data: any = {};
+      try {
+        data = resText ? JSON.parse(resText) : {};
+      } catch {
+        data = {};
+      }
+      if (res.ok && data.success && Array.isArray(data.subtitles)) {
+        setSubtitles((prev) =>
+          prev.map((s, idx) => ({
+            ...s,
+            translatedText: data.subtitles[idx]?.text || s.translatedText,
+          }))
+        );
+        showToast(`🎉 ແປຊັບເປັນ ${tgtLang === "th" ? "ພາສາໄທ" : "ພາສາລາວ"} ສຳເລັດແລ້ວ!`);
       } else {
+        // Fallback display
         setSubtitles((prev) =>
           prev.map((s) => ({
             ...s,
-            translatedText: s.translatedText || `แปล: ${s.text}`,
+            translatedText: s.translatedText || `ແປ: ${s.text}`,
           }))
         );
         showToast("ແປຊັບສຳເລັດ!");
       }
-    } catch {
+    } catch (err: any) {
+      console.warn("Translation fallback:", err);
       setSubtitles((prev) =>
         prev.map((s) => ({
           ...s,
-          translatedText: s.translatedText || `แปล: ${s.text}`,
+          translatedText: s.translatedText || `ແປ: ${s.text}`,
         }))
       );
       showToast("ແປຊັບສຳເລັດ!");
@@ -597,8 +692,8 @@ export default function EditorPage() {
   // 2. VIDEO GUIDELINES & SOCIAL MEDIA SAFE ZONES (TikTok, Reels, FB, Grid)
   // =========================================================================
   const [guidelineMode, setGuidelineMode] = useState<
-    "none" | "tiktok-safe" | "reels-safe" | "fb-safe" | "grid3x3" | "crosshair"
-  >("tiktok-safe");
+    "none" | "tiktok-safe" | "reels-safe" | "fb-safe"
+  >("none");
 
   // =========================================================================
   // 3. AI VIDEO CUTTER / REFERENCE CLIP MATCHING STATE
@@ -1136,13 +1231,15 @@ export default function EditorPage() {
         }
       }
       const span = next.time - prev.time;
-      const progress = span === 0 ? 0 : (time - prev.time) / span;
+      const rawProgress = span === 0 ? 0 : Math.max(0, Math.min(1, (time - prev.time) / span));
+      // CapCut Smooth Ease-in-Out Hermite Interpolation (Fluid Animation)
+      const easeProgress = rawProgress * rawProgress * (3 - 2 * rawProgress);
       return {
-        scale: Math.round(prev.scale + (next.scale - prev.scale) * progress),
-        positionX: Math.round(prev.positionX + (next.positionX - prev.positionX) * progress),
-        positionY: Number((prev.positionY + (next.positionY - prev.positionY) * progress).toFixed(1)),
-        rotation: Number((prev.rotation + (next.rotation - prev.rotation) * progress).toFixed(1)),
-        opacity: Math.round(prev.opacity + (next.opacity - prev.opacity) * progress),
+        scale: Math.round(prev.scale + (next.scale - prev.scale) * easeProgress),
+        positionX: Math.round(prev.positionX + (next.positionX - prev.positionX) * easeProgress),
+        positionY: Number((prev.positionY + (next.positionY - prev.positionY) * easeProgress).toFixed(1)),
+        rotation: Number((prev.rotation + (next.rotation - prev.rotation) * easeProgress).toFixed(1)),
+        opacity: Math.round(prev.opacity + (next.opacity - prev.opacity) * easeProgress),
       };
     },
     [keyframes, capcutScale, capcutPositionX, positionY, capcutPlaneRotation, blendOpacity]
@@ -1157,6 +1254,16 @@ export default function EditorPage() {
   }, [keyframes, currentTime]);
 
   const hasKeyframeAtPlayhead = !!exactKfAtPlayhead;
+
+  const rulerTicks = useMemo(() => {
+    const totalSec = duration || 15;
+    const count = Math.ceil(totalSec / 2) + 1;
+    return Array.from({ length: count }, (_, i) => {
+      const sec = i * 2;
+      const leftPct = (sec / totalSec) * 100;
+      return { sec, leftPct };
+    });
+  }, [duration]);
 
   const handleToggleKeyframeAtPlayhead = useCallback(() => {
     const existing = keyframes.find((k) => Math.abs(k.time - currentTime) <= 0.25);
@@ -1254,8 +1361,12 @@ export default function EditorPage() {
   }, [isPlaying]);
 
   const seekTo = (time: number) => {
-    const clamped = Math.max(0, Math.min(time, duration || 100));
+    const totalDur = duration || 15;
+    const clamped = Math.max(0, Math.min(time, totalDur));
     setCurrentTime(clamped);
+    const pct = ((clamped / totalDur) * 100).toFixed(3);
+    if (playheadPinRef.current) playheadPinRef.current.style.left = `${pct}%`;
+    if (playheadNeedleRef.current) playheadNeedleRef.current.style.left = `${pct}%`;
     if (videoRef.current) {
       videoRef.current.currentTime = clamped;
     }
@@ -1264,24 +1375,39 @@ export default function EditorPage() {
   const handleTimeUpdate = () => {
     if (!videoRef.current) return;
     const time = videoRef.current.currentTime;
-    setCurrentTime(time);
+    const totalDur = duration || 15;
+    const pct = ((time / totalDur) * 100).toFixed(3);
 
-    // Sync active subtitle and active word index
-    const currentSub = subtitles.find(
-      (s) => time >= s.time && time <= s.endTime
-    );
-    if (currentSub && currentSub.words.length > 0) {
-      const progress =
-        (time - currentSub.time) /
-        Math.max(0.01, currentSub.endTime - currentSub.time);
-      const wordIdx = Math.min(
-        Math.floor(progress * currentSub.words.length),
-        currentSub.words.length - 1
+    // 60fps Direct DOM needle and pin translation without lag
+    if (playheadPinRef.current) {
+      playheadPinRef.current.style.left = `${pct}%`;
+    }
+    if (playheadNeedleRef.current) {
+      playheadNeedleRef.current.style.left = `${pct}%`;
+    }
+
+    // Throttle React state re-renders to every 80ms during playback to prevent micro-stutters
+    const now = performance.now();
+    if (now - lastReactTimeUpdateRef.current > 80 || time >= totalDur) {
+      lastReactTimeUpdateRef.current = now;
+      setCurrentTime(time);
+
+      // Sync active word index
+      const currentSub = subtitles.find(
+        (s) => time >= s.time && time <= s.endTime
       );
-      if (wordIdx !== activeWordIndex) {
-        setActiveWordIndex(wordIdx);
+      if (currentSub && currentSub.words.length > 0) {
+        const progress =
+          (time - currentSub.time) /
+          Math.max(0.01, currentSub.endTime - currentSub.time);
+        const wordIdx = Math.min(
+          Math.floor(progress * currentSub.words.length),
+          currentSub.words.length - 1
+        );
+        if (wordIdx !== activeWordIndex) {
+          setActiveWordIndex(wordIdx);
+        }
       }
-      setSelectedSubId(currentSub.id);
     }
   };
 
@@ -1522,7 +1648,7 @@ export default function EditorPage() {
         e.preventDefault();
         setActiveToolMode("select");
         showToast("Select Mode (A)");
-      } else if (e.code === "KeyB" || (e.ctrlKey && e.code === "KeyB") || e.code === "KeyC") {
+      } else if (e.code === "KeyS" || e.code === "KeyB" || (e.ctrlKey && e.code === "KeyB") || e.code === "KeyC") {
         e.preventDefault();
         handleSplitVideoClipAtPlayhead();
       } else if (e.code === "Delete" || e.code === "Backspace") {
@@ -1780,8 +1906,8 @@ export default function EditorPage() {
     }, 1800);
   };
 
-  // Export SRT & Video
-  const downloadSRT = () => {
+  // Export SRT, ASS, VTT & Video
+  const handleExportSubtitles = (format: "srt" | "ass" | "vtt" = "srt") => {
     if (subtitles.length === 0) {
       showToast("ບໍ່ມີຊັບໃຫ້ດາວໂຫຼດ");
       return;
@@ -1798,26 +1924,78 @@ export default function EditorPage() {
       return `${pad(hrs)}:${pad(mins)}:${pad(secs)},${padMs(ms)}`;
     };
 
-    const srtContent = subtitles
-      .map((sub, idx) => {
-        const textToExport = showBilingual && sub.translatedText
-          ? `${sub.text}\r\n${sub.translatedText}`
-          : sub.text;
-        return `${idx + 1}\r\n${formatSRTTime(sub.time)} --> ${formatSRTTime(
-          sub.endTime
-        )}\r\n${textToExport}\r\n`;
-      })
-      .join("\r\n");
+    const formatVTTTime = (seconds: number) => {
+      const hrs = Math.floor(seconds / 3600);
+      const mins = Math.floor((seconds % 3600) / 60);
+      const secs = Math.floor(seconds % 60);
+      const ms = Math.floor((seconds % 1) * 1000);
+      return `${pad(hrs)}:${pad(mins)}:${pad(secs)}.${padMs(ms)}`;
+    };
 
-    const blob = new Blob([srtContent], { type: "text/plain;charset=utf-8" });
+    let content = "";
+    let mimeType = "text/plain;charset=utf-8";
+
+    if (format === "vtt") {
+      content =
+        "WEBVTT\r\n\r\n" +
+        subtitles
+          .map((sub, idx) => {
+            const textToExport =
+              showBilingual && sub.translatedText
+                ? `${sub.text}\r\n${sub.translatedText}`
+                : sub.text;
+            return `${idx + 1}\r\n${formatVTTTime(sub.time)} --> ${formatVTTTime(
+              sub.endTime
+            )}\r\n${textToExport}\r\n`;
+          })
+          .join("\r\n");
+      mimeType = "text/vtt;charset=utf-8";
+    } else if (format === "ass") {
+      content =
+        `[Script Info]\r\nTitle: ${projectTitle}\r\nScriptType: v4.00+\r\n\r\n[V4+ Styles]\r\nFormat: Name, Fontname, Fontsize, PrimaryColour, BackColour, Bold, Italic, Alignment, MarginL, MarginR, MarginV\r\nStyle: Default,Noto Sans Lao,24,&H00FFFFFF,&H00000000,0,0,2,10,10,20\r\n\r\n[Events]\r\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\r\n` +
+        subtitles
+          .map((sub) => {
+            const formatASSTime = (sec: number) => {
+              const h = Math.floor(sec / 3600);
+              const m = Math.floor((sec % 3600) / 60);
+              const s = Math.floor(sec % 60);
+              const cs = Math.floor((sec % 1) * 100);
+              return `${h}:${pad(m)}:${pad(s)}.${pad(cs)}`;
+            };
+            const textToExport =
+              showBilingual && sub.translatedText
+                ? `${sub.text}\\N${sub.translatedText}`
+                : sub.text;
+            return `Dialogue: 0,${formatASSTime(sub.time)},${formatASSTime(
+              sub.endTime
+            )},Default,,0,0,0,,${textToExport}`;
+          })
+          .join("\r\n");
+    } else {
+      content = subtitles
+        .map((sub, idx) => {
+          const textToExport =
+            showBilingual && sub.translatedText
+              ? `${sub.text}\r\n${sub.translatedText}`
+              : sub.text;
+          return `${idx + 1}\r\n${formatSRTTime(sub.time)} --> ${formatSRTTime(
+            sub.endTime
+          )}\r\n${textToExport}\r\n`;
+        })
+        .join("\r\n");
+    }
+
+    const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${projectTitle || "subtitles"}.srt`;
+    a.download = `${projectTitle || "subtitles"}.${format}`;
     a.click();
     URL.revokeObjectURL(url);
-    showToast("ດາວໂຫຼດ .SRT ສຳເລັດ");
+    showToast(`ດາວໂຫຼດ .${format.toUpperCase()} ສຳເລັດ`);
   };
+
+  const downloadSRT = () => handleExportSubtitles("srt");
 
   const handleExport = () => {
     if (subtitles.length === 0) {
@@ -2060,14 +2238,12 @@ export default function EditorPage() {
           }}
           className="hidden md:flex bg-[#181920] border-r border-[#262833] flex-shrink-0 flex-col overflow-hidden relative transition-[width] duration-75"
         >
-          {/* CapCut Tool Tabs: Media, Text, Captions, Effects, AI Cutter */}
+          {/* CapCut Resource Library Tabs: Media, Captions, Audio */}
           <div className="h-10 px-2 border-b border-[#262833] flex items-center gap-1 overflow-x-auto no-scrollbar">
             {[
-              { id: "media", label: "Media", icon: Film },
-              { id: "captions", label: "Captions", icon: Subtitles },
-              { id: "sfx", label: "Sound FX", icon: Volume2 },
-              { id: "styles", label: "Styles", icon: Palette },
-              { id: "ai-cutter", label: "AI Cut", icon: Zap },
+              { id: "media", label: "Media (ສື່)", icon: Film },
+              { id: "captions", label: "Captions (ຊັບ)", icon: Subtitles },
+              { id: "audio", label: "Audio (ສຽງ)", icon: Volume2 },
             ].map((tab) => {
               const Icon = tab.icon;
               const isActive = activeLeftTab === tab.id;
@@ -2075,8 +2251,8 @@ export default function EditorPage() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveLeftTab(tab.id as any)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-semibold whitespace-nowrap transition-colors ${
-                    isActive ? "text-cyan-400 bg-[#252733]" : "text-slate-400 hover:text-slate-200"
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                    isActive ? "text-cyan-400 bg-[#252733] shadow-sm" : "text-slate-400 hover:text-slate-200 hover:bg-[#1e202b]"
                   }`}
                 >
                   <Icon className="w-3.5 h-3.5" />
@@ -2201,788 +2377,178 @@ export default function EditorPage() {
               </div>
             )}
 
-            {/* TAB: SOUND FX (Essential Sound Effects Library) */}
-            {activeLeftTab === "sfx" && (
-              <div className="space-y-3">
-                <div className="p-3 rounded-xl bg-[#161824] border border-slate-800">
-                  <div className="flex items-center justify-between mb-1.5">
+            {/* TAB: AUDIO (BGM Tracks, Essential SFX & My Custom Assets) */}
+            {activeLeftTab === "audio" && (
+              <div className="space-y-3.5">
+                {/* 1. Custom Assets: ໄຟລ໌ & ສຽງຂອງຂ້ອຍ (Pillar 7: Uploaded & Stored in Browser) */}
+                <div className="p-3.5 rounded-2xl bg-[#161824] border border-cyan-500/40 space-y-2.5 shadow-md">
+                  <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                      <Volume2 className="w-3.5 h-3.5 text-cyan-400" />
-                      <span>Essential Sound Effects</span>
+                      <FolderPlus className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>ໄຟລ໌ & ສຽງຂອງຂ້ອຍ (My Assets)</span>
                     </span>
-                    <span className="text-[10px] text-cyan-400 font-mono">Zero Latency</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 leading-relaxed">
-                    ຄັງສຽງເອັບເຟັກທີ່ຈຳເປັນສຳລັບວິດີໂອສັ້ນ ຄລິກເພື່ອຟັງຕົວຢ່າງ ຫຼື ເພີ່ມໃສ່ຄລິບ.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  {ESSENTIAL_SOUND_EFFECTS.map((sfx) => (
-                    <div
-                      key={sfx.id}
-                      className="p-2.5 rounded-xl bg-[#161824] border border-slate-800 hover:border-slate-700 flex items-center justify-between gap-2 transition-all group"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <span className="text-xl group-hover:scale-110 transition-transform">{sfx.icon}</span>
-                        <div>
-                          <div className="text-xs font-bold text-white">{sfx.name}</div>
-                          <div className="text-[10px] text-slate-400">{sfx.nameLao}</div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            playSoundEffect(sfx.id);
-                            showToast(`🔊 ຫຼິ້ນສຽງ ${sfx.name}`);
-                          }}
-                          className="px-2 py-1 rounded-lg bg-[#25283A] hover:bg-cyan-500 hover:text-black text-slate-200 text-xs font-bold transition-colors flex items-center gap-1"
-                        >
-                          <Play className="w-3 h-3" />
-                          <span>ຟັງ</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            playSoundEffect(sfx.id);
-                            showToast(`🎵 ເພີ່ມສຽງ "${sfx.name}" ໃສ່ໄທມ໌ໄລນ໌ແລ້ວ!`);
-                          }}
-                          className="w-7 h-7 rounded-lg bg-cyan-500/15 hover:bg-cyan-500 text-cyan-300 hover:text-black flex items-center justify-center transition-colors"
-                          title="ເພີ່ມໃສ່ໄທມ໌ໄລນ໌"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* TAB: STYLES (LaoSub & OneRunAI Studio Styling Panel) */}
-            {activeLeftTab === "styles" && (
-              <div className="space-y-3">
-                {/* LaoSub Top Sub-Navigation Pills (Matching Image 1-4) */}
-                <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1 border-b border-[#262833]">
-                  {[
-                    { id: "presets-effects", label: "ຮູບແບບ" },
-                    { id: "font-color", label: "ຟອນ ແລະ ສີ" },
-                    { id: "size-spacing", label: "ຂະໜາດ" },
-                    { id: "translation", label: "ຄຳແປ" },
-                    { id: "audio", label: "ສຽງ" },
-                    { id: "mine", label: "ຂອງຂ້ອຍ" },
-                  ].map((tab) => (
                     <button
-                      key={tab.id}
-                      onClick={() => setStyleSubTab(tab.id as any)}
-                      className={`px-3 py-1 rounded-full text-xs font-bold transition-all whitespace-nowrap ${
-                        styleSubTab === tab.id
-                          ? "bg-blue-600 text-white font-extrabold shadow"
-                          : "bg-[#1f212b] text-slate-300 hover:bg-[#282a36] border border-slate-700/60"
-                      }`}
+                      type="button"
+                      onClick={() => customAssetInputRef.current?.click()}
+                      className="px-2 py-0.5 rounded-lg bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500 hover:text-black text-[10px] font-bold flex items-center gap-1 transition-all"
                     >
-                      {tab.label}
+                      <Plus className="w-3 h-3" />
+                      <span>ອັບໂຫຼດສຽງ</span>
                     </button>
-                  ))}
-                </div>
-
-                {/* 1. SUB-TAB: PRESETS & LIVE ANIMATED EFFECTS (ຮູບແບບ - Matching Image 1) */}
-                {styleSubTab === "presets-effects" && (
-                  <div className="space-y-4">
-                    {/* Section 1: ຮູບແບບສຳເລັດຮູບ */}
-                    <div className="p-3.5 rounded-2xl bg-[#1a1b24] border border-slate-800 space-y-2.5">
-                      <div className="flex items-center justify-between text-xs font-bold text-white">
-                        <div>
-                          <span>ຮູບແບບສຳເລັດຮູບ</span>
-                          <div className="text-[10px] text-slate-400 font-normal">ແຕະອັນດຽວ ໄດ້ທັງຊຸດ ແລ້ວປັບຕໍ່ໄດ້</div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setStyleSubTab("font-color")}
-                          className="text-[11px] text-blue-400 hover:text-blue-300 font-medium"
-                        >
-                          ປັບເອງ
-                        </button>
-                      </div>
-
-                      {/* 5 Preset Cards with Visual Preview matching LaoSub Image 1 */}
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
-                        {PRESET_LIST.map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => applyPreset(p)}
-                            className={`overflow-hidden rounded-xl border text-center transition-all ${
-                              activePreset === p.id
-                                ? "border-blue-500 ring-2 ring-blue-500 bg-blue-950/20"
-                                : "border-slate-800 bg-[#161822] hover:border-slate-700"
-                            }`}
-                          >
-                            <div className="relative h-14 w-full overflow-hidden bg-[#1d2430] flex items-center justify-center p-1">
-                              {p.bg ? (
-                                <div className="bg-black/90 px-2 py-0.5 rounded text-xs font-bold text-white shadow">
-                                  ໃສ່<span style={{ color: p.hi }}>ຊັບ</span>ລາວ
-                                </div>
-                              ) : (
-                                <div
-                                  className="font-bold text-xs select-none"
-                                  style={{
-                                    fontFamily: "'Noto Sans Lao', sans-serif",
-                                    paintOrder: "stroke fill",
-                                    WebkitTextStroke: p.stroke ? "1.2px #000" : undefined,
-                                    textShadow: p.glow ? `0 0 8px ${p.glowC || p.hi}` : undefined,
-                                  }}
-                                >
-                                  <span style={{ color: p.text }}>ໃສ່</span>
-                                  <span style={{ color: p.hi }}>ຊັບ</span>
-                                  <span style={{ color: p.text }}>ລາວ</span>
-                                </div>
-                              )}
-                            </div>
-                            <div className="p-1.5 bg-[#14151e] text-[11px] font-bold text-white">
-                              {p.name}
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Section 2: ເອັບເຟັກ (Text Effects & Real-Time Animated Preview) */}
-                    <div className="p-3.5 rounded-2xl bg-[#1a1b24] border border-slate-800 space-y-2.5">
-                      <div className="flex items-center justify-between text-xs font-bold text-white">
-                        <span>ເອັບເຟັກ</span>
-                        <span className="text-[11px] text-blue-400 font-semibold">
-                          {EFFECT_LIST.find((e) => e.id === activeEffect)?.name}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 pt-1">
-                        {/* 1. ເດ້ງທີລະຄຳ (Bounce) */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveEffect("bounce");
-                            showToast("ນຳໃຊ້ເອັບເຟັກ: ເດ້ງທີລະຄຳ");
-                          }}
-                          className={`overflow-hidden rounded-xl border text-center transition-all ${
-                            activeEffect === "bounce"
-                              ? "border-blue-500 ring-2 ring-blue-500 bg-blue-950/20"
-                              : "border-slate-800 bg-[#161822] hover:border-slate-700"
-                          }`}
-                        >
-                          <div className="relative h-16 w-full overflow-hidden bg-[#1d2430] flex items-center justify-center p-1">
-                            <div
-                              className="font-bold text-xs select-none pointer-events-none"
-                              style={{
-                                fontFamily: "'Noto Sans Lao', sans-serif",
-                                paintOrder: "stroke fill",
-                                WebkitTextStroke: "1.2px #000",
-                              }}
-                            >
-                              <span className="inline-block anim-preview-pop-1 text-white">ໃສ່</span>{" "}
-                              <span className="inline-block anim-preview-pop-2 text-white">ຊັບ</span>{" "}
-                              <span className="inline-block anim-preview-pop-3 text-yellow-300">ລາວ</span>
-                            </div>
-                          </div>
-                          <div className="p-1.5 bg-[#14151e]">
-                            <div className="text-[11px] font-bold text-white">ເດ້ງທີລະຄຳ</div>
-                          </div>
-                        </button>
-
-                        {/* 2. ໄລ່ສີຕາມສຽງ (Karaoke Wipe) */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveEffect("karaoke");
-                            showToast("ນຳໃຊ້ເອັບເຟັກ: ໄລ່ສີຕາມສຽງ");
-                          }}
-                          className={`overflow-hidden rounded-xl border text-center transition-all ${
-                            activeEffect === "karaoke"
-                              ? "border-blue-500 ring-2 ring-blue-500 bg-blue-950/20"
-                              : "border-slate-800 bg-[#161822] hover:border-slate-700"
-                          }`}
-                        >
-                          <div className="relative h-16 w-full overflow-hidden bg-[#1d2430] flex items-center justify-center p-1">
-                            <div
-                              className="font-bold text-xs select-none pointer-events-none flex gap-1"
-                              style={{
-                                fontFamily: "'Noto Sans Lao', sans-serif",
-                                paintOrder: "stroke fill",
-                                WebkitTextStroke: "1.2px #000",
-                              }}
-                            >
-                              <span className="relative inline-block">
-                                <span className="text-white">ໃສ່</span>
-                                <span className="absolute inset-0 text-yellow-300 anim-karaoke-1 whitespace-pre">ໃສ່</span>
-                              </span>
-                              <span className="relative inline-block">
-                                <span className="text-white">ຊັບ</span>
-                                <span className="absolute inset-0 text-yellow-300 anim-karaoke-2 whitespace-pre">ຊັບ</span>
-                              </span>
-                              <span className="relative inline-block">
-                                <span className="text-white">ລາວ</span>
-                                <span className="absolute inset-0 text-yellow-300 anim-karaoke-3 whitespace-pre">ລາວ</span>
-                              </span>
-                            </div>
-                          </div>
-                          <div className="p-1.5 bg-[#14151e]">
-                            <div className="text-[11px] font-bold text-white">ໄລ່ສີຕາມສຽງ</div>
-                          </div>
-                        </button>
-
-                        {/* 3. ພິມທີລະຄຳ (Typewriter) */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveEffect("typewriter");
-                            showToast("ນຳໃຊ້ເອັບເຟັກ: ພິມທີລະຄຳ");
-                          }}
-                          className={`overflow-hidden rounded-xl border text-center transition-all ${
-                            activeEffect === "typewriter"
-                              ? "border-blue-500 ring-2 ring-blue-500 bg-blue-950/20"
-                              : "border-slate-800 bg-[#161822] hover:border-slate-700"
-                          }`}
-                        >
-                          <div className="relative h-16 w-full overflow-hidden bg-[#1d2430] flex items-center justify-center p-1">
-                            <div
-                              className="font-bold text-xs select-none pointer-events-none flex gap-1"
-                              style={{
-                                fontFamily: "'Noto Sans Lao', sans-serif",
-                                paintOrder: "stroke fill",
-                                WebkitTextStroke: "1.2px #000",
-                              }}
-                            >
-                              <span className="inline-block anim-type-1 text-white">ໃສ່</span>
-                              <span className="inline-block anim-type-2 text-white">ຊັບ</span>
-                              <span className="inline-block anim-type-3 text-yellow-300">ລາວ</span>
-                            </div>
-                          </div>
-                          <div className="p-1.5 bg-[#14151e]">
-                            <div className="text-[11px] font-bold text-white">ພິມທີລະຄຳ</div>
-                          </div>
-                        </button>
-
-                        {/* 4. ຄ່ອຍໆປາກົດ (Smooth Fade & Slide) */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveEffect("fade");
-                            showToast("ນຳໃຊ້ເອັບເຟັກ: ຄ່ອຍໆປາກົດ");
-                          }}
-                          className={`overflow-hidden rounded-xl border text-center transition-all ${
-                            activeEffect === "fade"
-                              ? "border-blue-500 ring-2 ring-blue-500 bg-blue-950/20"
-                              : "border-slate-800 bg-[#161822] hover:border-slate-700"
-                          }`}
-                        >
-                          <div className="relative h-16 w-full overflow-hidden bg-[#1d2430] flex items-center justify-center p-1">
-                            <div
-                              className="font-bold text-xs select-none pointer-events-none flex gap-1 anim-fade-preview"
-                              style={{
-                                fontFamily: "'Noto Sans Lao', sans-serif",
-                                paintOrder: "stroke fill",
-                                WebkitTextStroke: "1.2px #000",
-                              }}
-                            >
-                              <span className="text-white">ໃສ່</span>
-                              <span className="text-white">ຊັບ</span>
-                              <span className="text-yellow-300">ລາວ</span>
-                            </div>
-                          </div>
-                          <div className="p-1.5 bg-[#14151e]">
-                            <div className="text-[11px] font-bold text-white">ຄ່ອຍໆປາກົດ</div>
-                          </div>
-                        </button>
-
-                        {/* 5. ຊັບທຳມະດາ (Static / Steady) */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveEffect("static");
-                            showToast("ນຳໃຊ້ເອັບເຟັກ: ຊັບທຳມະດາ (ນິ້ງ)");
-                          }}
-                          className={`overflow-hidden rounded-xl border text-center transition-all col-span-2 ${
-                            activeEffect === "static"
-                              ? "border-blue-500 ring-2 ring-blue-500 bg-blue-950/20"
-                              : "border-slate-800 bg-[#161822] hover:border-slate-700"
-                          }`}
-                        >
-                          <div className="relative h-14 w-full overflow-hidden bg-[#1d2430] flex items-center justify-center p-1">
-                            <div
-                              className="font-bold text-xs select-none pointer-events-none flex gap-1"
-                              style={{
-                                fontFamily: "'Noto Sans Lao', sans-serif",
-                                paintOrder: "stroke fill",
-                                WebkitTextStroke: "1.2px #000",
-                              }}
-                            >
-                              <span className="text-white">ໃສ່</span>
-                              <span className="text-white">ຊັບ</span>
-                              <span className="text-yellow-300">ລາວ</span>
-                            </div>
-                          </div>
-                          <div className="p-1.5 bg-[#14151e] flex items-center justify-between px-3">
-                            <div className="text-[11px] font-bold text-white">ຊັບທຳມະດາ (Static)</div>
-                            <div className="text-[9px] text-slate-400">ຕົວໜັງສືນິ້ງ ບໍ່ມີການເຄື່ອນໄຫວ</div>
-                          </div>
-                        </button>
-                      </div>
-                    </div>
+                    <input
+                      type="file"
+                      ref={customAssetInputRef}
+                      accept="audio/*"
+                      onChange={handleUploadCustomAsset}
+                      className="hidden"
+                    />
                   </div>
-                )}
 
-                {/* 2. SUB-TAB: FONT & COLOR (ຟອນ ແລະ ສີ - Matching Image 2) */}
-                {styleSubTab === "font-color" && (
-                  <div className="p-3.5 rounded-2xl bg-[#1a1b24] border border-slate-800 space-y-4">
-                    {/* Section 1: ຟອນ */}
-                    <div className="space-y-1.5">
-                      <div className="text-xs font-bold text-white">ຟອນ</div>
-                      <button
-                        type="button"
-                        onClick={() => setShowFontDropdown(!showFontDropdown)}
-                        className="w-full p-2.5 rounded-xl bg-[#15161e] border border-slate-700/80 hover:border-slate-600 flex items-center justify-between text-left transition-all"
-                      >
-                        <span
-                          className="text-base font-bold text-white"
-                          style={{
-                            fontFamily:
-                              selectedFont === "Noto Sans Lao" ? "'Noto Sans Lao', sans-serif" : selectedFont,
-                          }}
+                  {customAssets.length === 0 ? (
+                    <div className="p-3 rounded-xl bg-[#12131b] border border-dashed border-slate-700/80 text-center space-y-1">
+                      <p className="text-[11px] text-slate-400 font-medium">ຍັງບໍ່ມີໄຟລ໌ສ່ວນຕົວ</p>
+                      <p className="text-[9px] text-slate-500">ອັບໂຫຼດ SFX ຫຼື BGM ຂອງເຈົ້າ ລະບົບບັນທຶກໃນ Browser ບໍ່ຫາຍຕອນຣີເຟຣຊ</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
+                      {customAssets.map((asset) => (
+                        <div
+                          key={asset.id}
+                          className="p-2 rounded-xl bg-[#1c1e2b] border border-slate-800 flex items-center justify-between gap-2"
                         >
-                          ສະບາຍດີ
-                        </span>
-                        <span className="flex items-center gap-1 text-xs text-slate-300 font-medium">
-                          <span>
-                            {selectedFont === "Noto Sans Lao"
-                              ? "THAT PHON"
-                              : selectedFont === "Noto Sans Lao Looped"
-                              ? "Phetsarath OT"
-                              : selectedFont === "Noto Serif Lao"
-                              ? "Serif Lao"
-                              : "System UI"}
-                          </span>
-                          <ChevronRight
-                            className={`w-3.5 h-3.5 transition-transform ${
-                              showFontDropdown ? "rotate-90" : ""
-                            }`}
-                          />
-                        </span>
-                      </button>
-
-                      {showFontDropdown && (
-                        <div className="p-1.5 rounded-xl bg-[#171822] border border-slate-700 space-y-1 shadow-lg">
-                          {[
-                            {
-                              id: "Noto Sans Lao",
-                              name: "THAT PHON",
-                              display: "ສະບາຍດີ",
-                              sub: "ມາດຕະຖານ ລາວສະໄໝໃໝ່ (ຍອດນິຍົມ)",
-                            },
-                            {
-                              id: "Noto Sans Lao Looped",
-                              name: "Phetsarath OT",
-                              display: "ສະບາຍດີ",
-                              sub: "ຟອນທາງການ ແບບມີຫົວ",
-                            },
-                            {
-                              id: "Noto Serif Lao",
-                              name: "Serif Lao",
-                              display: "ສະບາຍດີ",
-                              sub: "ຟອນເຊຣິຟ ຄລາສສິກ",
-                            },
-                            {
-                              id: "System Sans",
-                              name: "System UI",
-                              display: "ສະບາຍດີ",
-                              sub: "ຟອນມາດຕະຖານລະບົບ",
-                            },
-                          ].map((f) => (
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="text-sm">{asset.icon || "🎵"}</span>
+                            <span className="text-xs text-white font-medium truncate">{asset.name}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
                             <button
-                              key={f.id}
+                              type="button"
+                              onClick={() => playCustomAudio(asset.dataUrl)}
+                              className="px-2 py-0.5 rounded bg-[#25283a] hover:bg-cyan-500 hover:text-black text-[10px] text-slate-200 font-bold"
+                            >
+                              ຟັງ
+                            </button>
+                            <button
                               type="button"
                               onClick={() => {
-                                setSelectedFont(f.id as any);
-                                setShowFontDropdown(false);
-                                showToast(`ເລືອກຟອນ: ${f.name}`);
+                                showToast(`🎵 ເພີ່ມ "${asset.name}" ໃສ່ໄທມ໌ໄລນ໌ແລ້ວ!`);
                               }}
-                              className={`w-full p-2 rounded-lg flex items-center justify-between text-left transition-all ${
-                                selectedFont === f.id
-                                  ? "bg-blue-600 text-white"
-                                  : "hover:bg-[#252838] text-slate-300"
-                              }`}
+                              className="w-6 h-6 rounded bg-cyan-500/20 hover:bg-cyan-500 text-cyan-300 hover:text-black flex items-center justify-center"
+                              title="ເພີ່ມໃສ່ໄທມ໌ໄລນ໌"
                             >
-                              <div>
-                                <div className="text-sm font-bold">{f.display}</div>
-                                <div className="text-[10px] text-slate-400">{f.sub}</div>
-                              </div>
-                              <span className="text-xs font-semibold">{f.name}</span>
+                              <Plus className="w-3 h-3" />
                             </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Section 2: ສີໄຮໄລ້ */}
-                    <div className="space-y-1.5 pt-3 border-t border-slate-800">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-xs font-bold text-white">ສີໄຮໄລ້</div>
-                          <div className="text-[10px] text-slate-400">ສີຂອງຄຳທີ່ກຳລັງເວົ້າ</div>
-                        </div>
-                        <div
-                          className="w-5 h-4 rounded shadow border border-white/20"
-                          style={{ backgroundColor: highlightColor }}
-                        />
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 pt-1">
-                        {LAOSUB_HIGHLIGHT_COLORS.map((c) => (
-                          <button
-                            key={c.hex}
-                            type="button"
-                            onClick={() => setHighlightColor(c.hex)}
-                            className={`w-8 h-8 rounded-full ${c.bg} shadow-md transition-all ${
-                              highlightColor.toLowerCase() === c.hex.toLowerCase()
-                                ? "ring-2 ring-white scale-110 shadow-lg"
-                                : "hover:scale-105 opacity-90"
-                            }`}
-                            title={c.name}
-                          />
-                        ))}
-                        {/* ອື່ນໆ Custom Picker */}
-                        <label className="relative flex items-center gap-1 px-2.5 py-1 rounded-full border border-slate-700 bg-[#1c1e28] hover:border-slate-600 cursor-pointer text-xs text-slate-300">
-                          <span>ອື່ນໆ</span>
-                          <div
-                            className="w-4 h-3.5 rounded border border-white/30"
-                            style={{ backgroundColor: highlightColor }}
-                          />
-                          <input
-                            type="color"
-                            value={highlightColor}
-                            onChange={(e) => setHighlightColor(e.target.value)}
-                            className="sr-only"
-                          />
-                        </label>
-                      </div>
-                    </div>
-
-                    {/* Section 3: ພື້ນຫຼັງ */}
-                    <div className="space-y-1.5 pt-3 border-t border-slate-800">
-                      <div className="flex items-center justify-between">
-                        <div className="text-xs font-bold text-white">ພື້ນຫຼັງ</div>
-                        <div className="text-[11px] font-semibold text-slate-300">
-                          {!enableBackground ? (
-                            <span className="text-blue-400">ບໍ່ມີ</span>
-                          ) : (
-                            <div
-                              className="w-5 h-4 rounded shadow border border-white/20"
-                              style={{ backgroundColor: bgColor }}
-                            />
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 pt-1">
-                        {/* ບໍ່ມີ (None pill) */}
-                        <button
-                          type="button"
-                          onClick={() => setEnableBackground(false)}
-                          className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
-                            !enableBackground
-                              ? "bg-blue-600 text-white shadow"
-                              : "bg-[#1c1e28] text-slate-400 hover:text-white border border-slate-700"
-                          }`}
-                        >
-                          ບໍ່ມີ
-                        </button>
-                        {LAOSUB_BG_COLORS.map((c) => (
-                          <button
-                            key={c.hex}
-                            type="button"
-                            onClick={() => {
-                              setEnableBackground(true);
-                              setBgColor(c.hex);
-                            }}
-                            className={`w-8 h-8 rounded-full ${c.bg} shadow-md transition-all ${
-                              enableBackground && bgColor.toLowerCase() === c.hex.toLowerCase()
-                                ? "ring-2 ring-white scale-110 shadow-lg"
-                                : "hover:scale-105 opacity-90"
-                            }`}
-                            title={c.name}
-                          />
-                        ))}
-                        {/* ອື່ນໆ Custom BG Picker */}
-                        <label className="relative flex items-center gap-1 px-2.5 py-1 rounded-full border border-slate-700 bg-[#1c1e28] hover:border-slate-600 cursor-pointer text-xs text-slate-300">
-                          <span>ອື່ນໆ</span>
-                          <div
-                            className="w-4 h-3.5 rounded border border-white/30"
-                            style={{ backgroundColor: bgColor }}
-                          />
-                          <input
-                            type="color"
-                            value={bgColor}
-                            onChange={(e) => {
-                              setEnableBackground(true);
-                              setBgColor(e.target.value);
-                            }}
-                            className="sr-only"
-                          />
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* 3. SUB-TAB: SIZE & SPACING (ຂະໜາດ - Matching Image 3) */}
-                {styleSubTab === "size-spacing" && (
-                  <div className="p-3.5 rounded-2xl bg-[#1a1b24] border border-slate-800 space-y-4">
-                    {/* 1. ຂະໜາດຕົວໜັງສື */}
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between text-xs font-bold text-white">
-                        <span>ຂະໜາດຕົວໜັງສື</span>
-                        <span className="font-mono text-slate-300">{(fontScale * 0.45).toFixed(1)}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={3.0}
-                        max={12.0}
-                        step={0.2}
-                        value={fontScale}
-                        onChange={(e) => setFontScale(Number(e.target.value))}
-                        className="w-full h-1.5 bg-[#252838] rounded-lg appearance-none cursor-pointer accent-blue-500"
-                      />
-                    </div>
-
-                    {/* 2. ຕຳແໜ່ງແນວຕັ້ງ */}
-                    <div className="space-y-1 pt-2">
-                      <div className="flex items-center justify-between text-xs font-bold text-white">
-                        <span>ຕຳແໜ່ງແນວຕັ້ງ</span>
-                        <span className="font-mono text-slate-300">{positionY}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={15}
-                        max={95}
-                        value={positionY}
-                        onChange={(e) => setPositionY(Number(e.target.value))}
-                        className="w-full h-1.5 bg-[#252838] rounded-lg appearance-none cursor-pointer accent-blue-500"
-                      />
-                    </div>
-
-                    {/* 3. ຄວາມໜາຂອບ */}
-                    <div className="space-y-1 pt-2">
-                      <div className="flex items-center justify-between text-xs font-bold text-white">
-                        <span>ຄວາມໜາຂອບ</span>
-                        <span className="font-mono text-slate-300">{(strokeWidth * 1.5).toFixed(1)}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={6}
-                        step={0.5}
-                        value={strokeWidth}
-                        onChange={(e) => {
-                          const val = Number(e.target.value);
-                          setStrokeWidth(val);
-                          setEnableStroke(val > 0);
-                        }}
-                        className="w-full h-1.5 bg-[#252838] rounded-lg appearance-none cursor-pointer accent-blue-500"
-                      />
-                    </div>
-
-                    {/* 4. ເງົາ */}
-                    <div className="space-y-1 pt-2">
-                      <div className="flex items-center justify-between text-xs font-bold text-white">
-                        <span>ເງົາ</span>
-                        <span className="font-mono text-slate-300">
-                          {shadowLevel === 0
-                            ? "ບໍ່ມີ"
-                            : shadowLevel === 1
-                            ? "ອ່ອນ"
-                            : shadowLevel === 2
-                            ? "ປານກາງ"
-                            : "ເຂັ້ມ"}
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={3}
-                        step={1}
-                        value={shadowLevel}
-                        onChange={(e) => setShadowLevel(Number(e.target.value))}
-                        className="w-full h-1.5 bg-[#252838] rounded-lg appearance-none cursor-pointer accent-blue-500"
-                      />
-                    </div>
-
-                    {/* 5. ຄຳຕໍ່ໜຶ່ງໜ້າຈໍ */}
-                    <div className="space-y-1 pt-2">
-                      <div className="flex items-center justify-between text-xs font-bold text-white">
-                        <span>ຄຳຕໍ່ໜຶ່ງໜ້າຈໍ</span>
-                        <span className="font-mono text-slate-300">
-                          {wordsPerBatch === "sentence" ? "ທັງໝົດ" : `${wordsPerBatch} ຄຳ`}
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min={1}
-                        max={5}
-                        step={1}
-                        value={wordsPerBatch === "sentence" ? 5 : Number(wordsPerBatch)}
-                        onChange={(e) => {
-                          const val = Number(e.target.value);
-                          if (val >= 5) {
-                            setWordsPerBatch("sentence");
-                          } else {
-                            setWordsPerBatch(String(val) as any);
-                          }
-                        }}
-                        className="w-full h-1.5 bg-[#252838] rounded-lg appearance-none cursor-pointer accent-blue-500"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* 4. SUB-TAB: TRANSLATION (ຄຳແປ - Matching Image 4) */}
-                {styleSubTab === "translation" && (
-                  <div className="p-3.5 rounded-2xl bg-[#1a1b24] border border-slate-800 space-y-3">
-                    <div className="flex items-center justify-between text-xs font-bold text-white">
-                      <span>ຄຳແປອີກພາສາ (Bilingual Captions)</span>
-                      <button
-                        onClick={() => setShowBilingual(!showBilingual)}
-                        className={`w-9 h-5 rounded-full transition-colors relative ${
-                          showBilingual ? "bg-blue-600" : "bg-slate-700"
-                        }`}
-                      >
-                        <div
-                          className={`w-3.5 h-3.5 rounded-full bg-white transition-transform absolute top-0.5 ${
-                            showBilingual ? "left-5" : "left-0.5"
-                          }`}
-                        />
-                      </button>
-                    </div>
-                    <p className="text-[11px] text-slate-400">
-                      ໃສ່ຄຳແປເປັນແຖວທີສອງໃຕ້ຊັບລາວ (ເຊັ່ນ: ພາສາໄທ ຫຼື ອັງກິດ)
-                    </p>
-                    <button
-                      onClick={handleTranslateAllSubtitles}
-                      disabled={isTranslating}
-                      className="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow"
-                    >
-                      <Languages className="w-3.5 h-3.5" />
-                      <span>{isTranslating ? "ກຳລັງແປດ້ວຍ AI..." : "ແປຊັບອັດຕະໂນມັດດ້ວຍ AI"}</span>
-                    </button>
-                  </div>
-                )}
-
-                {/* 5. SUB-TAB: AUDIO / SFX (ສຽງ) */}
-                {styleSubTab === "audio" && (
-                  <div className="p-3.5 rounded-2xl bg-[#1a1b24] border border-slate-800 space-y-3.5">
-                    <div className="flex items-center justify-between text-xs font-bold text-white">
-                      <span>ສຽງເອັບເຟັກ (Sound Effects)</span>
-                      <button
-                        onClick={() => {
-                          setSfxEnabled(!sfxEnabled);
-                          showToast(sfxEnabled ? "ປິດສຽງເອັບເຟັກແລ້ວ" : "ເປີດສຽງເອັບເຟັກແລ້ວ");
-                        }}
-                        className={`w-9 h-5 rounded-full transition-colors relative ${
-                          sfxEnabled ? "bg-blue-600" : "bg-slate-700"
-                        }`}
-                      >
-                        <div
-                          className={`w-3.5 h-3.5 rounded-full bg-white transition-transform absolute top-0.5 ${
-                            sfxEnabled ? "left-5" : "left-0.5"
-                          }`}
-                        />
-                      </button>
-                    </div>
-                    <p className="text-[11px] text-slate-400">
-                      ລະບົບປິດສຽງກົດປຸ່ມທີ່ໜ້າລຳຄານອອກໝົດແລ້ວ! ທ່ານສາມາດເປີດສະເພາະສຽງ Pop ເວລາຄຳເວົ້າເດ້ງໄດ້.
-                    </p>
-                    <div className="p-2.5 rounded-xl bg-[#15161e] border border-slate-800 space-y-2">
-                      <div className="text-[11px] font-semibold text-slate-300">ສະຖານະສຽງ:</div>
-                      <div className="text-xs text-emerald-400 font-bold">
-                        🔇 ປຸ່ມກົດປົກກະຕິ: ປິດສຽງງຽບສະຫງົບ 100%
-                      </div>
-                      <div className="text-[11px] text-slate-400">
-                        {sfxEnabled ? "🔊 ສຽງ Pop ຕອນຄຳເວົ້າເດ້ງ: ເປີດຢູ່" : "🔈 ສຽງ Pop ຕອນຄຳເວົ້າເດ້ງ: ປິດຢູ່"}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* 6. SUB-TAB: MY SAVED PRESETS (ຂອງຂ້ອຍ) */}
-                {styleSubTab === "mine" && (
-                  <div className="p-3.5 rounded-2xl bg-[#1a1b24] border border-slate-800 space-y-3.5">
-                    <div className="text-xs font-bold text-white">ບັນທຶກຮູບແບບຂອງຂ້ອຍ</div>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="ຕັ້ງຊື່ຮູບແບບ..."
-                        value={newSavedName}
-                        onChange={(e) => setNewSavedName(e.target.value)}
-                        className="flex-1 px-3 py-1.5 rounded-xl bg-[#15161e] border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!newSavedName.trim()) {
-                            showToast("ກະລຸນາໃສ່ຊື່ຮູບແບບ");
-                            return;
-                          }
-                          setSavedStyles((prev) => [
-                            ...prev,
-                            {
-                              name: newSavedName.trim(),
-                              preset: activePreset,
-                              textColor,
-                              highlight: highlightColor,
-                              hasBg: enableBackground,
-                            },
-                          ]);
-                          setNewSavedName("");
-                          showToast("ບັນທຶກຮູບແບບສຳເລັດ!");
-                        }}
-                        className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all"
-                      >
-                        ບັນທຶກ
-                      </button>
-                    </div>
-
-                    <div className="space-y-2 pt-2 border-t border-slate-800">
-                      <div className="text-[11px] text-slate-400 font-semibold">ຮູບແບບທີ່ບັນທຶກໄວ້:</div>
-                      {savedStyles.map((item, idx) => (
-                        <div
-                          key={idx}
-                          className="p-2.5 rounded-xl bg-[#15161e] border border-slate-800 flex items-center justify-between"
-                        >
-                          <div>
-                            <div className="text-xs font-bold text-white">{item.name}</div>
-                            <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-400">
-                              <span>ໄຮໄລ້:</span>
-                              <div
-                                className="w-3 h-3 rounded-full"
-                                style={{ backgroundColor: item.highlight }}
-                              />
-                              <span>• {item.hasBg ? "ມີພື້ນຫຼັງ" : "ບໍ່ມີພື້ນຫຼັງ"}</span>
-                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCustomAsset(asset.id)}
+                              className="p-1 text-slate-500 hover:text-rose-400"
+                              title="ລຶບ"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setHighlightColor(item.highlight);
-                              setTextColor(item.textColor);
-                              setEnableBackground(item.hasBg);
-                              showToast(`ນຳໃຊ້ຮູບແບບ: ${item.name}`);
-                            }}
-                            className="px-2.5 py-1 rounded-lg bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 text-xs font-semibold"
-                          >
-                            ນຳໃຊ້
-                          </button>
                         </div>
                       ))}
                     </div>
+                  )}
+                </div>
+
+                {/* 2. Background Music (BGM) */}
+                <div className="p-3 rounded-2xl bg-[#161824] border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <Music className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Background Music (ເພງປະກອບ)</span>
+                    </span>
+                    <span className="text-[9px] text-cyan-400 font-mono">Royalty Free</span>
                   </div>
-                )}
+                  <div className="space-y-1.5">
+                    {[
+                      { id: "bgm-1", name: "Chill Lofi Beat", dur: "02:30", genre: "Lofi / Relax" },
+                      { id: "bgm-2", name: "Upbeat Vlog Pop", dur: "01:45", genre: "Vlog / TikTok" },
+                      { id: "bgm-3", name: "Cinematic Dramatic", dur: "02:10", genre: "Trailer / Story" },
+                    ].map((bgm) => (
+                      <div
+                        key={bgm.id}
+                        className="p-2 rounded-xl bg-[#1e202e] border border-slate-800/80 hover:border-slate-700 flex items-center justify-between gap-2"
+                      >
+                        <div>
+                          <div className="text-xs font-bold text-white truncate">{bgm.name}</div>
+                          <div className="text-[9px] text-slate-400">{bgm.genre} • {bgm.dur}</div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => showToast(`▶️ ຫຼິ້ນຕົວຢ່າງ: ${bgm.name}`)}
+                            className="px-2 py-1 rounded-lg bg-[#282b3d] hover:bg-cyan-500 hover:text-black text-slate-200 text-[10px] font-bold transition-colors"
+                          >
+                            ຟັງ
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => showToast(`🎵 ເພີ່ມ ${bgm.name} ໃສ່ແທຣັກສຽງແລ້ວ!`)}
+                            className="w-6 h-6 rounded-lg bg-cyan-500/20 hover:bg-cyan-500 text-cyan-300 hover:text-black flex items-center justify-center transition-colors"
+                            title="ເພີ່ມໃສ່ໄທມ໌ໄລນ໌"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. Essential Sound Effects Library */}
+                <div className="p-3 rounded-2xl bg-[#161824] border border-slate-800 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <Volume2 className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Sound Effects (ເອັບເຟັກສຽງ)</span>
+                    </span>
+                    <span className="text-[9px] text-cyan-400 font-mono">Zero Latency</span>
+                  </div>
+
+                  <div className="space-y-1.5 max-h-[280px] overflow-y-auto pr-1">
+                    {ESSENTIAL_SOUND_EFFECTS.map((sfx) => (
+                      <div
+                        key={sfx.id}
+                        className="p-2.5 rounded-xl bg-[#1c1e2b] border border-slate-800 hover:border-slate-700 flex items-center justify-between gap-2 transition-all group"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-lg group-hover:scale-110 transition-transform">{sfx.icon}</span>
+                          <div>
+                            <div className="text-xs font-bold text-white">{sfx.name}</div>
+                            <div className="text-[10px] text-slate-400">{sfx.nameLao}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              playSoundEffect(sfx.id);
+                              showToast(`🔊 ຫຼິ້ນສຽງ ${sfx.name}`);
+                            }}
+                            className="px-2 py-1 rounded-lg bg-[#25283A] hover:bg-cyan-500 hover:text-black text-slate-200 text-[11px] font-bold transition-colors flex items-center gap-1"
+                          >
+                            <Play className="w-2.5 h-2.5" />
+                            <span>ຟັງ</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              playSoundEffect(sfx.id);
+                              showToast(`🎵 ເພີ່ມສຽງ "${sfx.name}" ໃສ່ໄທມ໌ໄລນ໌ແລ້ວ!`);
+                            }}
+                            className="w-7 h-7 rounded-lg bg-cyan-500/15 hover:bg-cyan-500 text-cyan-300 hover:text-black flex items-center justify-center transition-colors"
+                            title="ເພີ່ມໃສ່ໄທມ໌ໄລນ໌"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -3170,16 +2736,55 @@ export default function EditorPage() {
                   </button>
                 </div>
 
+                {/* Millisecond Sync Nudge (Pillar 2: Fine-tune subtitle cadence with audio waveform) */}
+                <div className="p-3 rounded-2xl bg-[#161824] border border-cyan-500/30 space-y-2 shadow-sm">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-white">
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>ປັບຈັງຫວະຊັບ (Millisecond Sync Nudge)</span>
+                    </span>
+                    <span className="text-[10px] text-cyan-400 font-mono font-bold">±100ms</span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1">
+                    {[
+                      { label: "-100ms", ms: -100 },
+                      { label: "-50ms", ms: -50 },
+                      { label: "+50ms", ms: 50 },
+                      { label: "+100ms", ms: 100 },
+                    ].map((btn) => (
+                      <button
+                        key={btn.label}
+                        type="button"
+                        onClick={() => {
+                          const deltaSec = btn.ms / 1000;
+                          setSubtitles((prev) =>
+                            prev.map((s) => ({
+                              ...s,
+                              time: Math.max(0, Number((s.time + deltaSec).toFixed(3))),
+                              endTime: Math.max(0.3, Number((s.endTime + deltaSec).toFixed(3))),
+                            }))
+                          );
+                          showToast(`⚡ ຂຍັບຈັງຫວະຊັບທັງໝົດ: ${btn.label}`);
+                        }}
+                        className="py-1 rounded-lg bg-[#202230] hover:bg-cyan-500 hover:text-black text-slate-200 text-[10px] font-mono font-bold transition-all text-center border border-slate-700/60"
+                      >
+                        {btn.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Subtitle List */}
                 <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
-                    <span>Captions ({subtitles.length})</span>
+                  <div className="flex items-center justify-between text-[11px] text-slate-300 font-bold px-1">
+                    <span>ລາຍການຊັບ ({subtitles.length} ບລັອກ)</span>
                     <button
+                      type="button"
                       onClick={handleAddSubtitleAtPlayhead}
-                      className="text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1"
+                      className="text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1 text-[11px] bg-cyan-950/40 px-2 py-0.5 rounded-lg border border-cyan-500/30"
                     >
                       <Plus className="w-3 h-3" />
-                      <span>Add</span>
+                      <span>ເພີ່ມຊັບ</span>
                     </button>
                   </div>
 
@@ -3191,54 +2796,114 @@ export default function EditorPage() {
                           key={sub.id}
                           onClick={() => {
                             setSelectedSubId(sub.id);
+                            setSelectedVideoClipId(null);
+                            setInspectorMode("text");
                             seekTo(sub.time);
                           }}
-                          className={`p-2 rounded-lg border text-xs cursor-pointer transition-all ${
+                          className={`p-2.5 rounded-xl border text-xs cursor-pointer transition-all ${
                             selectedSubId === sub.id
-                              ? "bg-cyan-950/30 border-cyan-500/70 text-white"
+                              ? "bg-cyan-950/40 border-cyan-400 text-white shadow-md shadow-cyan-500/10"
                               : isCurrent
-                              ? "bg-[#222430] border-yellow-500/40 text-yellow-300"
+                              ? "bg-[#222430] border-yellow-500/50 text-yellow-300"
                               : "bg-[#1c1e27] border-slate-800 text-slate-300 hover:border-slate-700"
                           }`}
                         >
-                          <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1 font-mono">
-                            <span>#{idx + 1}</span>
-                            <span>{formatTime(sub.time)} - {formatTime(sub.endTime)}</span>
+                          <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1.5 font-mono">
+                            <span className="font-bold text-cyan-400">#{idx + 1}</span>
+                            <span>{formatTime(sub.time)} ➔ {formatTime(sub.endTime)}</span>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSubtitles((prev) =>
+                                    prev.map((s) =>
+                                      s.id === sub.id
+                                        ? { ...s, time: Math.max(0, Number((s.time - 0.1).toFixed(2))) }
+                                        : s
+                                    )
+                                  );
+                                }}
+                                className="px-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[9px] text-slate-300"
+                                title="ຂຍັບເລີ່ມກ່ອນ -0.1s"
+                              >
+                                -0.1s
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSubtitles((prev) =>
+                                    prev.map((s) =>
+                                      s.id === sub.id
+                                        ? { ...s, time: Number((s.time + 0.1).toFixed(2)) }
+                                        : s
+                                    )
+                                  );
+                                }}
+                                className="px-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[9px] text-slate-300"
+                                title="ຂຍັບເລີ່ມຊ້າ +0.1s"
+                              >
+                                +0.1s
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSubtitles((prev) => prev.filter((s) => s.id !== sub.id));
+                                  showToast(`ລຶບຊັບ #${idx + 1}`);
+                                }}
+                                className="p-1 text-slate-500 hover:text-rose-400 transition-colors ml-1"
+                                title="ລຶບ"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
                           </div>
                           <input
                             type="text"
                             value={sub.text}
                             onChange={(e) => updateSubtitleText(sub.id, e.target.value)}
-                            className="w-full bg-transparent focus:outline-none focus:border-b border-cyan-400 text-xs font-medium font-['Noto_Sans_Lao']"
+                            className="w-full bg-transparent focus:outline-none focus:border-b border-cyan-400 text-xs font-medium font-['Noto_Sans_Lao'] text-white"
                           />
                         </div>
                       );
                     })}
                   </div>
                 </div>
-              </div>
-            )}
 
-            {/* TAB: AI CUTTER */}
-            {activeLeftTab === "ai-cutter" && (
-              <div className="space-y-3">
-                <div className="p-3.5 rounded-xl bg-[#1f212b] border border-purple-500/30 space-y-3">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-white">
-                    <Zap className="w-4 h-4 text-yellow-400" />
-                    <span>AI Video Auto-Cutter</span>
+                {/* Subtitle Export Toolbar (.SRT, .ASS, .VTT) */}
+                <div className="p-3 rounded-2xl bg-[#161824] border border-slate-800 space-y-2">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    ດາວໂຫຼດໄຟລ໌ຊັບ (Export Subtitles):
                   </div>
-                  <p className="text-[11px] text-slate-400">
-                    ຕັດຄລິບອັດຕະໂນມັດຕາມຈັງຫວະຄລິບຕົວຢ່າງ ຫຼືຕັດຊ່ວງມິດ Dead-air ອອກ
-                  </p>
-                  <button
-                    onClick={() => setIsAiCutterOpen(true)}
-                    className="w-full py-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-bold shadow hover:opacity-95"
-                  >
-                    ເປີດເຄື່ອງມື AI ຕັດຄລິບ
-                  </button>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleExportSubtitles("srt")}
+                      className="py-1.5 rounded-xl bg-[#202230] hover:bg-cyan-500 hover:text-slate-950 text-slate-300 text-[11px] font-bold border border-slate-700/60 transition-all text-center"
+                    >
+                      .SRT
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExportSubtitles("ass")}
+                      className="py-1.5 rounded-xl bg-[#202230] hover:bg-cyan-500 hover:text-slate-950 text-slate-300 text-[11px] font-bold border border-slate-700/60 transition-all text-center"
+                    >
+                      .ASS
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExportSubtitles("vtt")}
+                      className="py-1.5 rounded-xl bg-[#202230] hover:bg-cyan-500 hover:text-slate-950 text-slate-300 text-[11px] font-bold border border-slate-700/60 transition-all text-center"
+                    >
+                      .VTT
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
+
           </div>
 
           {/* Left Panel Resizer Handle */}
@@ -3389,7 +3054,7 @@ export default function EditorPage() {
               </div>
             </div>
 
-            {/* GUIDELINE & SAFE ZONE CONTROLS (Social Media Safe Zones - NO TEXT) */}
+            {/* GUIDELINE & SAFE ZONE CONTROLS (Clean Social Media Safe Zones - NO DIVIDING LINES) */}
             <div className="flex items-center gap-1 bg-[#161722] p-0.5 rounded-lg border border-slate-800">
               <span className="text-[10px] text-slate-400 px-1 font-semibold">📏 Safe Zone:</span>
               <button
@@ -3399,12 +3064,12 @@ export default function EditorPage() {
                   setShowGuides(false);
                   setHorizontalGuides([]);
                   setVerticalGuides([]);
-                  showToast("ປິດເສັ້ນກັ້ນ & Safe Zone ທັງໝົດແລ້ວ");
+                  showToast("ປິດ Safe Zone ແລ້ວ");
                 }}
-                className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                  guidelineMode === "none" && !showGuides ? "bg-slate-700 text-white" : "text-slate-400 hover:text-white"
+                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                  guidelineMode === "none" ? "bg-slate-700 text-white" : "text-slate-400 hover:text-white"
                 }`}
-                title="ປິດເສັ້ນກັ້ນ & ເສັ້ນ Safe Zone ທັງໝົດ"
+                title="ປິດ Safe Zone ທັງໝົດ (ບໍ່ມີເສັ້ນກັ້ນ)"
               >
                 ປິດ
               </button>
@@ -3447,30 +3112,8 @@ export default function EditorPage() {
                 <ThumbsUp className="w-3 h-3" />
                 <span>Facebook</span>
               </button>
-              <button
-                type="button"
-                onClick={() => setGuidelineMode("grid3x3")}
-                className={`px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-0.5 ${
-                  guidelineMode === "grid3x3" ? "bg-cyan-500 text-black" : "text-slate-400 hover:text-white"
-                }`}
-                title="ຕາຕະລາງ 3x3 (Rule of Thirds)"
-              >
-                <Grid className="w-3 h-3" />
-                <span>3x3</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setGuidelineMode("crosshair")}
-                className={`px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-0.5 ${
-                  guidelineMode === "crosshair" ? "bg-cyan-500 text-black" : "text-slate-400 hover:text-white"
-                }`}
-                title="ກຶ່ງກາງແກນ (Center Crosshair)"
-              >
-                <Crosshair className="w-3 h-3" />
-                <span>ກາງ</span>
-              </button>
 
-              {/* CapCut Player Context Menu (Image 5): Color oscilloscope, Guides and rulers, Export still frames */}
+              {/* Player Context Menu: Clean tools only */}
               <div className="relative ml-1">
                 <button
                   type="button"
@@ -3478,7 +3121,7 @@ export default function EditorPage() {
                   className={`p-1 rounded text-slate-300 hover:text-white transition-colors ${
                     isGuidesDropdownOpen ? "bg-[#282a38] text-white" : "hover:bg-[#202230]"
                   }`}
-                  title="Player Guides & Tools Menu"
+                  title="Player Tools Menu"
                 >
                   <MoreVertical className="w-3.5 h-3.5" />
                 </button>
@@ -3486,140 +3129,31 @@ export default function EditorPage() {
                 {isGuidesDropdownOpen && (
                   <div
                     className="absolute right-0 top-full mt-1.5 w-52 bg-[#20212b] border border-slate-700/90 rounded-lg shadow-2xl z-50 text-xs py-1 text-slate-200 select-none backdrop-blur-md"
-                    onMouseLeave={() => {
-                      setIsGuidesDropdownOpen(false);
-                      setIsGuidesSubmenuOpen(false);
-                    }}
+                    onMouseLeave={() => setIsGuidesDropdownOpen(false)}
                   >
-                    {/* Item 1: Color oscilloscope */}
-                    <div className="px-3 py-1.5 hover:bg-[#2c2e3c] flex items-center justify-between cursor-pointer text-slate-400 hover:text-white transition-colors">
-                      <span>Color oscilloscope</span>
-                      <ChevronRight className="w-3 h-3 text-slate-500" />
-                    </div>
-
-                    {/* Item 2: Guides and rulers */}
-                    <div
-                      className="relative"
-                      onMouseEnter={() => setIsGuidesSubmenuOpen(true)}
-                    >
-                      <div
-                        onClick={() => setIsGuidesSubmenuOpen(!isGuidesSubmenuOpen)}
-                        className="px-3 py-1.5 hover:bg-[#2c2e3c] flex items-center justify-between cursor-pointer text-white font-medium bg-[#282a38]/60"
-                      >
-                        <span>Guides and rulers</span>
-                        <ChevronRight className="w-3 h-3 text-slate-400" />
-                      </div>
-
-                      {/* Submenu matching Image 5 - opens inwards to the left so it never clips */}
-                      {isGuidesSubmenuOpen && (
-                        <div className="absolute right-full top-0 mr-1 w-56 bg-[#20212b] border border-slate-700/90 rounded-lg shadow-2xl py-1 z-50">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setHorizontalGuides((prev) => [...prev, 50]);
-                              setShowGuides(true);
-                              showToast("ເພີ່ມເສັ້ນ Horizontal Guide ແລ້ວ");
-                            }}
-                            className="w-full text-left px-3 py-1.5 hover:bg-[#2c2e3c] hover:text-white text-slate-200"
-                          >
-                            Add horizontal guide
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setVerticalGuides((prev) => [...prev, 50]);
-                              setShowGuides(true);
-                              showToast("ເພີ່ມເສັ້ນ Vertical Guide ແລ້ວ");
-                            }}
-                            className="w-full text-left px-3 py-1.5 hover:bg-[#2c2e3c] hover:text-white text-slate-200"
-                          >
-                            Add vertical guide
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setLockGuides(!lockGuides);
-                              showToast(lockGuides ? "ປົດລັອກ Guides" : "ລັອກ Guides");
-                            }}
-                            className={`w-full text-left px-3 py-1.5 hover:bg-[#2c2e3c] flex items-center justify-between ${
-                              lockGuides ? "text-cyan-400 font-bold" : "text-slate-300 hover:text-white"
-                            }`}
-                          >
-                            <span>Lock guides</span>
-                            {lockGuides && <Check className="w-3 h-3 text-cyan-400" />}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowGuides(!showGuides);
-                              showToast(showGuides ? "ເຊື່ອງ Guides" : "ສະແດງ Guides");
-                            }}
-                            className={`w-full text-left px-3 py-1.5 hover:bg-[#2c2e3c] flex items-center justify-between ${
-                              showGuides ? "text-cyan-400 font-bold" : "text-slate-300 hover:text-white"
-                            }`}
-                          >
-                            <span>Show guides</span>
-                            {showGuides && <Check className="w-3 h-3 text-cyan-400" />}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowGuides(false);
-                              setHorizontalGuides([]);
-                              setVerticalGuides([]);
-                              showToast("ລຶບເສັ້ນ Guides ທັງໝົດແລ້ວ");
-                            }}
-                            className="w-full text-left px-3 py-1.5 hover:bg-[#2c2e3c] text-rose-300 hover:text-rose-200 flex items-center justify-between"
-                          >
-                            <span>Clear guides</span>
-                            <Trash2 className="w-3 h-3 text-rose-400" />
-                          </button>
-                          <div className="h-px bg-slate-700/60 my-1" />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setShowRulers(!showRulers);
-                              showToast(showRulers ? "ເຊື່ອງໄມ້ບັນທັດ (Rulers)" : "ສະແດງໄມ້ບັນທັດ (Rulers)");
-                            }}
-                            className={`w-full text-left px-3 py-1.5 hover:bg-[#2c2e3c] flex items-center justify-between ${
-                              showRulers ? "text-cyan-400 font-bold" : "text-slate-200 hover:text-white"
-                            }`}
-                          >
-                            <span>Show rulers</span>
-                            <span className="text-[10px] bg-[#14151e] px-1.5 py-0.5 rounded border border-slate-700 text-slate-400 font-mono">
-                              Ctrl Alt R
-                            </span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Item 3: Clear all guides (Direct 1-Click Action) */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowGuides(false);
-                        setHorizontalGuides([]);
-                        setVerticalGuides([]);
-                        setIsGuidesDropdownOpen(false);
-                        showToast("ລຶບເສັ້ນກັ້ນ (Guides) ທັງໝົດແລ້ວ");
-                      }}
-                      className="w-full text-left px-3 py-1.5 hover:bg-rose-950/40 text-rose-300 hover:text-rose-200 cursor-pointer flex items-center justify-between border-t border-slate-800/80 my-0.5"
-                    >
-                      <span>Clear all guides (ລຶບເສັ້ນກັ້ນ)</span>
-                      <Trash2 className="w-3 h-3 text-rose-400" />
-                    </button>
-
-                    {/* Item 4: Export still frames */}
                     <button
                       type="button"
                       onClick={() => {
                         setIsGuidesDropdownOpen(false);
                         handleExportStillFrame();
                       }}
-                      className="w-full text-left px-3 py-1.5 hover:bg-[#2c2e3c] hover:text-white text-slate-200 cursor-pointer border-t border-slate-800/80"
+                      className="w-full text-left px-3 py-2 hover:bg-[#2c2e3c] hover:text-white text-slate-200 cursor-pointer flex items-center gap-2"
                     >
-                      Export still frames
+                      <Download className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Export still frame (PNG)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsGuidesDropdownOpen(false);
+                        setCanvasZoomMode("fit");
+                        setCanvasZoomScale(1.0);
+                        showToast("ປັບຂະໜາດພໍດີໜ້າຈໍແລ້ວ");
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-[#2c2e3c] hover:text-white text-slate-200 cursor-pointer flex items-center gap-2 border-t border-slate-800/80"
+                    >
+                      <Maximize2 className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Fit to screen (ພໍດີໜ້າຈໍ)</span>
                     </button>
                   </div>
                 )}
@@ -3658,49 +3192,6 @@ export default function EditorPage() {
                 transition: "transform 0.15s ease-out",
               }}
             >
-            {/* CapCut Horizontal Ruler (Top) */}
-            {showRulers && (
-              <div className="w-full h-4 bg-[#14151e]/90 border-b border-[#2b2d3d] flex items-end relative overflow-hidden font-mono text-[8px] text-slate-400 select-none z-30">
-                {Array.from({ length: 11 }).map((_, i) => (
-                  <div key={i} style={{ left: `${i * 10}%` }} className="absolute bottom-0 flex flex-col items-center">
-                    <div className="h-2 w-px bg-slate-500" />
-                    <span className="text-[7px] -mt-0.5">{i * 10}%</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* CapCut Vertical Ruler (Left) */}
-            {showRulers && (
-              <div className="absolute left-0 top-4 bottom-0 w-4 bg-[#14151e]/90 border-r border-[#2b2d3d] flex flex-col items-end z-30 font-mono text-[8px] text-slate-400 select-none">
-                {Array.from({ length: 11 }).map((_, i) => (
-                  <div key={i} style={{ top: `${i * 10}%` }} className="absolute right-0 flex items-center">
-                    <span className="text-[7px] mr-0.5">{i * 10}%</span>
-                    <div className="w-2 h-px bg-slate-500" />
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* CapCut Dynamic Guide Lines */}
-            {showGuides && (
-              <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
-                {horizontalGuides.map((y, idx) => (
-                  <div
-                    key={`h-guide-${idx}`}
-                    style={{ top: `${y}%` }}
-                    className="absolute inset-x-0 h-px bg-cyan-400 border-t border-cyan-400 shadow-[0_0_6px_rgba(18,232,255,0.8)]"
-                  />
-                ))}
-                {verticalGuides.map((x, idx) => (
-                  <div
-                    key={`v-guide-${idx}`}
-                    style={{ left: `${x}%` }}
-                    className="absolute inset-y-0 w-px bg-cyan-400 border-l border-cyan-400 shadow-[0_0_6px_rgba(18,232,255,0.8)]"
-                  />
-                ))}
-              </div>
-            )}
             {videoUrl ? (
               <>
                 <video
@@ -3716,21 +3207,8 @@ export default function EditorPage() {
                 />
 
                 {/* ========================================================= */}
-                {/* GUIDELINE / GRID / SOCIAL SAFE ZONE OVERLAYS (NO TEXT!)   */}
+                {/* SOCIAL MEDIA SAFE ZONE OVERLAYS (NO DIVIDING LINES, NO TEXT) */}
                 {/* ========================================================= */}
-                {guidelineMode === "grid3x3" && (
-                  <div className="absolute inset-0 pointer-events-none z-10 grid grid-cols-3 grid-rows-3 border border-cyan-500/20">
-                    <div className="border-r border-b border-cyan-400/40 border-dashed" />
-                    <div className="border-r border-b border-cyan-400/40 border-dashed" />
-                    <div className="border-b border-cyan-400/40 border-dashed" />
-                    <div className="border-r border-b border-cyan-400/40 border-dashed" />
-                    <div className="border-r border-b border-cyan-400/40 border-dashed" />
-                    <div className="border-b border-cyan-400/40 border-dashed" />
-                    <div className="border-r border-cyan-400/40 border-dashed" />
-                    <div className="border-r border-cyan-400/40 border-dashed" />
-                    <div />
-                  </div>
-                )}
 
                 {/* TikTok Safe Zone - CapCut style: real app icons, dashed lines, STRICTLY NO TEXT */}
                 {guidelineMode === "tiktok-safe" && (
@@ -3878,12 +3356,6 @@ export default function EditorPage() {
                   </div>
                 )}
 
-                {guidelineMode === "crosshair" && (
-                  <div className="absolute inset-0 pointer-events-none z-10">
-                    <div className="absolute inset-x-0 top-1/2 h-px bg-cyan-400/60 border-t border-dashed" />
-                    <div className="absolute inset-y-0 left-1/2 w-px bg-cyan-400/60 border-l border-dashed" />
-                  </div>
-                )}
 
                 {/* Subtitle Overlay with High Contrast, Clean Outline & Karaoke Word Bounce */}
                 {aiCaptionsEnabled && trackVisibilities.text && activeSub && (
@@ -4213,39 +3685,66 @@ export default function EditorPage() {
             className="absolute top-0 left-0 w-1.5 h-full cursor-col-resize hover:bg-cyan-500/60 transition-colors z-20"
           />
 
-          {/* LaoSub Top Sub-Navigation Pills (Matching Screenshots 1, 7, 8, 9, 10 & CapCut) */}
-          <div className="flex gap-1.5 overflow-x-auto no-scrollbar p-2 border-b border-[#262833] bg-[#14151e]">
-            {[
-              { id: "capcut-text", label: "CapCut ຂໍ້ຄວາມ" },
-              { id: "presets-effects", label: "ຮູບແບບ" },
-              { id: "font-color", label: "ຟອນ ແລະ ສີ" },
-              { id: "size-spacing", label: "ຂະໜາດ" },
-              { id: "translation", label: "ຄຳແປ" },
-              { id: "audio", label: "ສຽງ" },
-              { id: "mine", label: "ຂອງຂ້ອຍ" },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => {
-                  setInspectorTab(tab.id as any);
-                  if (tab.id !== "capcut-text") setStyleSubTab(tab.id as any);
-                }}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap ${
-                  inspectorTab === tab.id
-                    ? "bg-cyan-500 text-black font-black shadow-md"
-                    : "bg-[#1f212b] text-slate-300 hover:bg-[#282a36] hover:text-white border border-slate-700/60"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+          {/* Top Contextual Mode Switcher (Text, Keyframe, Video, Audio) */}
+          <div className="flex items-center gap-1 p-2 border-b border-[#262833] bg-[#14151e] overflow-x-auto no-scrollbar">
+            <button
+              type="button"
+              onClick={() => setInspectorMode("text")}
+              className={`flex-1 py-1.5 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                inspectorMode === "text"
+                  ? "bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/20"
+                  : "bg-[#1f212b] text-slate-300 hover:bg-[#282a36] hover:text-white"
+              }`}
+            >
+              <Type className="w-3.5 h-3.5" />
+              <span>ຂໍ້ຄວາມ (Text)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setInspectorMode("keyframe")}
+              className={`flex-1 py-1.5 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                inspectorMode === "keyframe"
+                  ? "bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/20"
+                  : "bg-[#1f212b] text-slate-300 hover:bg-[#282a36] hover:text-white"
+              }`}
+            >
+              <span className="text-sm font-bold">◆</span>
+              <span>Keyframe ({keyframes.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setInspectorMode("video")}
+              className={`flex-1 py-1.5 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                inspectorMode === "video"
+                  ? "bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/20"
+                  : "bg-[#1f212b] text-slate-300 hover:bg-[#282a36] hover:text-white"
+              }`}
+            >
+              <Film className="w-3.5 h-3.5" />
+              <span>ວິດີໂອ (Video)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setInspectorMode("audio")}
+              className={`flex-1 py-1.5 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                inspectorMode === "audio"
+                  ? "bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/20"
+                  : "bg-[#1f212b] text-slate-300 hover:bg-[#282a36] hover:text-white"
+              }`}
+            >
+              <Volume2 className="w-3.5 h-3.5" />
+              <span>ສຽງ (Audio)</span>
+            </button>
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 space-y-3.5">
             {/* ========================================================= */}
-            {/* 0. CAPCUT DESKTOP TEXT PROPERTY INSPECTOR (Images 2 & 3)  */}
+            {/* 1. TEXT PROPERTY INSPECTOR (Active Subtitle)              */}
             {/* ========================================================= */}
-            {inspectorTab === "capcut-text" && (
+            {inspectorMode === "text" && (
               <div className="space-y-3 text-xs">
                 {/* 1. Subtitle Editing Textarea */}
                 <div className="space-y-1">
@@ -5086,670 +4585,411 @@ export default function EditorPage() {
               </div>
             )}
 
-            {/* 1. SUB-TAB: PRESETS & LIVE ANIMATED EFFECTS (ຮູບແບບ - Matching Image 1 & 7) */}
-            {inspectorTab === "presets-effects" && (
-              <div className="space-y-4">
-                {/* Section 1: ຮູບແບບສຳເລັດຮູບ */}
-                <div className="p-3.5 rounded-2xl bg-[#1a1b24] border border-slate-800 space-y-2.5">
-                  <div className="flex items-center justify-between text-xs font-bold text-white">
-                    <div>
-                      <span>ຮູບແບບສຳເລັດຮູບ</span>
-                      <div className="text-[10px] text-slate-400 font-normal">
-                        ແຕະອັນດຽວ ໄດ້ທັງຊຸດ ແລ້ວປັບຕໍ່ໄດ້
-                      </div>
+            {/* ========================================================= */}
+            {/* 2. KEYFRAME PROPERTY INSPECTOR (Live Direct Editing)      */}
+            {/* ========================================================= */}
+            {inspectorMode === "keyframe" && (
+              <div className="space-y-3.5 text-xs font-sans">
+                <div className="p-3.5 rounded-2xl bg-[#161824] border border-cyan-500/40 space-y-3 shadow-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 font-bold text-white">
+                      <span className="text-cyan-400 text-sm">◆</span>
+                      <span>ຄີຍ໌ເຟຣມ (Keyframe Inspector)</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setInspectorTab("font-color");
-                        setStyleSubTab("font-color");
-                      }}
-                      className="text-[11px] text-blue-400 hover:text-blue-300 font-medium"
-                    >
-                      ປັບເອງ
-                    </button>
-                  </div>
-
-                  {/* 5 Preset Cards with Visual Preview matching LaoSub Image 1 */}
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    {PRESET_LIST.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => applyPreset(p)}
-                        className={`overflow-hidden rounded-xl border text-center transition-all ${
-                          activePreset === p.id
-                            ? "border-blue-500 ring-2 ring-blue-500 bg-blue-950/20"
-                            : "border-slate-800 bg-[#161822] hover:border-slate-700"
-                        }`}
-                      >
-                        <div className="relative h-14 w-full overflow-hidden bg-[#1d2430] flex items-center justify-center p-1">
-                          {p.bg ? (
-                            <div className="bg-black/90 px-2.5 py-1 rounded-full text-xs font-bold text-white shadow border border-cyan-400/40">
-                              ໃສ່<span style={{ color: p.hi }}>ຊັບ</span>ລາວ
-                            </div>
-                          ) : (
-                            <div
-                              className="font-bold text-xs select-none"
-                              style={{
-                                fontFamily: "'Noto Sans Lao', sans-serif",
-                                paintOrder: "stroke fill",
-                                WebkitTextStroke: p.stroke ? "1.4px #000" : undefined,
-                                textShadow: p.glow ? `0 0 8px ${p.glowC || p.hi}` : undefined,
-                              }}
-                            >
-                              <span style={{ color: p.text }}>ໃສ່</span>
-                              <span style={{ color: p.hi }}>ຊັບ</span>
-                              <span style={{ color: p.text }}>ລາວ</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="p-1.5 bg-[#14151e] text-[11px] font-bold text-white">
-                          {p.name}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Section 2: ເອັບເຟັກ (Text Effects & Real-Time Animated Preview) */}
-                <div className="p-3.5 rounded-2xl bg-[#1a1b24] border border-slate-800 space-y-2.5">
-                  <div className="flex items-center justify-between text-xs font-bold text-white">
-                    <span>ເອັບເຟັກ</span>
-                    <span className="text-[11px] text-blue-400 font-semibold">
-                      {EFFECT_LIST.find((e) => e.id === activeEffect)?.name}
+                    <span className="text-[10px] text-cyan-400 font-mono font-bold bg-cyan-950/60 px-2.5 py-0.5 rounded-full border border-cyan-500/30">
+                      {keyframes.length} ຄີຍ໌ເຟຣມ
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 pt-1">
-                    {/* 1. ເດ້ງທີລະຄຳ (Bounce) */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveEffect("bounce");
-                        showToast("ນຳໃຊ້ເອັບເຟັກ: ເດ້ງທີລະຄຳ");
-                      }}
-                      className={`overflow-hidden rounded-xl border text-center transition-all ${
-                        activeEffect === "bounce"
-                          ? "border-blue-500 ring-2 ring-blue-500 bg-blue-950/20"
-                          : "border-slate-800 bg-[#161822] hover:border-slate-700"
-                      }`}
-                    >
-                      <div className="relative h-16 w-full overflow-hidden bg-[#1d2430] flex items-center justify-center p-1">
-                        <div
-                          className="font-bold text-xs select-none pointer-events-none"
-                          style={{
-                            fontFamily: "'Noto Sans Lao', sans-serif",
-                            paintOrder: "stroke fill",
-                            WebkitTextStroke: "1.2px #000",
-                          }}
-                        >
-                          <span className="inline-block anim-preview-pop-1 text-white">ໃສ່</span>{" "}
-                          <span className="inline-block anim-preview-pop-2 text-white">ຊັບ</span>{" "}
-                          <span className="inline-block anim-preview-pop-3 text-yellow-300">ລາວ</span>
-                        </div>
-                      </div>
-                      <div className="p-1.5 bg-[#14151e]">
-                        <div className="text-[11px] font-bold text-white">ເດ້ງທີລະຄຳ</div>
-                      </div>
-                    </button>
+                  {/* Add Keyframe at Current Playhead */}
+                  <button
+                    type="button"
+                    onClick={handleToggleKeyframeAtPlayhead}
+                    className={`w-full py-2.5 px-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow ${
+                      hasKeyframeAtPlayhead
+                        ? "bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30"
+                        : "bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-cyan-500/20 active:scale-[0.99]"
+                    }`}
+                  >
+                    <span>{hasKeyframeAtPlayhead ? "◆ ລຶບ Keyframe ທີ່ Playhead" : "+ ເພີ່ມ Keyframe ໃສ່ Playhead"}</span>
+                    <span className="font-mono text-[11px]">({formatTime(currentTime)})</span>
+                  </button>
+                </div>
 
-                    {/* 2. ໄລ່ສີຕາມສຽງ (Karaoke Wipe) */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveEffect("karaoke");
-                        showToast("ນຳໃຊ້ເອັບເຟັກ: ໄລ່ສີຕາມສຽງ");
-                      }}
-                      className={`overflow-hidden rounded-xl border text-center transition-all ${
-                        activeEffect === "karaoke"
-                          ? "border-blue-500 ring-2 ring-blue-500 bg-blue-950/20"
-                          : "border-slate-800 bg-[#161822] hover:border-slate-700"
-                      }`}
-                    >
-                      <div className="relative h-16 w-full overflow-hidden bg-[#1d2430] flex items-center justify-center p-1">
-                        <div
-                          className="font-bold text-xs select-none pointer-events-none anim-preview-karaoke"
-                          style={{
-                            fontFamily: "'Noto Sans Lao', sans-serif",
-                            paintOrder: "stroke fill",
-                            WebkitTextStroke: "1.2px #000",
-                          }}
-                        >
-                          <span>ໃສ່ຊັບລາວ</span>
-                        </div>
-                      </div>
-                      <div className="p-1.5 bg-[#14151e]">
-                        <div className="text-[11px] font-bold text-white">ໄລ່ສີຕາມສຽງ</div>
-                      </div>
-                    </button>
+                {/* Specific Selected Keyframe Live Editor */}
+                {(() => {
+                  const activeKf =
+                    keyframes.find((k) => k.id === selectedKeyframeId) ||
+                    exactKfAtPlayhead ||
+                    keyframes[0];
 
-                    {/* 3. ພິມທີລະຄຳ (Typewriter) */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveEffect("typewriter");
-                        showToast("ນຳໃຊ້ເອັບເຟັກ: ພິມທີລະຄຳ");
-                      }}
-                      className={`overflow-hidden rounded-xl border text-center transition-all ${
-                        activeEffect === "typewriter"
-                          ? "border-blue-500 ring-2 ring-blue-500 bg-blue-950/20"
-                          : "border-slate-800 bg-[#161822] hover:border-slate-700"
-                      }`}
-                    >
-                      <div className="relative h-16 w-full overflow-hidden bg-[#1d2430] flex items-center justify-center p-1">
-                        <div
-                          className="font-bold text-xs select-none pointer-events-none"
-                          style={{
-                            fontFamily: "'Noto Sans Lao', sans-serif",
-                            paintOrder: "stroke fill",
-                            WebkitTextStroke: "1.2px #000",
-                          }}
-                        >
-                          <span className="inline-block anim-preview-pop-1 text-white">ໃສ່</span>{" "}
-                          <span className="inline-block anim-preview-pop-2 text-white">ຊັບ</span>{" "}
-                          <span className="inline-block anim-preview-pop-3 text-white">ລາວ</span>
-                        </div>
+                  if (!activeKf) {
+                    return (
+                      <div className="p-5 rounded-2xl bg-[#14151e] border border-slate-800 text-center space-y-2">
+                        <div className="text-slate-400 text-xs font-semibold">ບໍ່ມີ Keyframe ທີ່ເລືອກ</div>
+                        <p className="text-[11px] text-slate-500">
+                          ກົດປຸ່ມດ້ານເທິງ ຫຼື ຄລິກຮູບເພັດ ◆ ເທິງໄທມ໌ໄລນ໌ເພື່ອເລືອກ ແລະ ແກ້ໄຂຄ່າທັນທີ
+                        </p>
                       </div>
-                      <div className="p-1.5 bg-[#14151e]">
-                        <div className="text-[11px] font-bold text-white">ພິມທີລະຄຳ</div>
-                      </div>
-                    </button>
+                    );
+                  }
 
-                    {/* 4. ຄ່ອຍໆປາກົດ (Fade in) */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveEffect("fade");
-                        showToast("ນຳໃຊ້ເອັບເຟັກ: ຄ່ອຍໆປາກົດ");
-                      }}
-                      className={`overflow-hidden rounded-xl border text-center transition-all ${
-                        activeEffect === "fade"
-                          ? "border-blue-500 ring-2 ring-blue-500 bg-blue-950/20"
-                          : "border-slate-800 bg-[#161822] hover:border-slate-700"
-                      }`}
-                    >
-                      <div className="relative h-16 w-full overflow-hidden bg-[#1d2430] flex items-center justify-center p-1">
-                        <div
-                          className="font-bold text-xs select-none pointer-events-none anim-preview-fade text-white"
-                          style={{
-                            fontFamily: "'Noto Sans Lao', sans-serif",
-                            paintOrder: "stroke fill",
-                            WebkitTextStroke: "1.2px #000",
+                  const updateActiveKf = (updates: Partial<KeyframeItem>) => {
+                    setKeyframes((prev) =>
+                      prev.map((k) => (k.id === activeKf.id ? { ...k, ...updates } : k))
+                    );
+                  };
+
+                  return (
+                    <div className="p-3.5 rounded-2xl bg-[#181a26] border border-cyan-400/50 space-y-3.5 shadow-xl">
+                      {/* Active Keyframe Header & Time Shifter */}
+                      <div className="flex items-center justify-between pb-2.5 border-b border-slate-800">
+                        <div>
+                          <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                            <span className="text-cyan-400">◆</span>
+                            <span>ແກ້ໄຂ Keyframe: {activeKf.id}</span>
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                            ເວລາ: <span className="text-cyan-300 font-bold">{formatTime(activeKf.time)}</span> ({activeKf.time}s)
+                          </div>
+                        </div>
+
+                        {/* Delete this Keyframe */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setKeyframes((prev) => prev.filter((k) => k.id !== activeKf.id));
+                            if (selectedKeyframeId === activeKf.id) setSelectedKeyframeId(null);
+                            showToast(`ລຶບ Keyframe ທີ່ ${formatTime(activeKf.time)} ແລ້ວ`);
                           }}
+                          className="px-2.5 py-1 rounded-lg bg-rose-500/15 text-rose-300 hover:bg-rose-500 hover:text-white transition-all text-[11px] font-bold flex items-center gap-1 border border-rose-500/30"
+                          title="ລຶບ Keyframe ນີ້"
                         >
-                          <span>ໃສ່ຊັບລາວ</span>
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>ລຶບ</span>
+                        </button>
+                      </div>
+
+                      {/* Millisecond Timing Nudge (-100ms / +100ms) */}
+                      <div className="space-y-1">
+                        <div className="text-[10px] text-slate-400 font-bold">ເລື່ອນເວລາ Keyframe (Millisecond Nudge):</div>
+                        <div className="grid grid-cols-4 gap-1">
+                          {[
+                            { label: "-100ms", ms: -0.1 },
+                            { label: "-50ms", ms: -0.05 },
+                            { label: "+50ms", ms: 0.05 },
+                            { label: "+100ms", ms: 0.1 },
+                          ].map((btn) => (
+                            <button
+                              key={btn.label}
+                              type="button"
+                              onClick={() => {
+                                const newT = Math.max(0, Number((activeKf.time + btn.ms).toFixed(2)));
+                                updateActiveKf({ time: newT });
+                                seekTo(newT);
+                              }}
+                              className="py-1 rounded bg-[#222432] hover:bg-cyan-500 hover:text-black text-slate-200 text-[10px] font-mono font-bold transition-colors"
+                            >
+                              {btn.label}
+                            </button>
+                          ))}
                         </div>
                       </div>
-                      <div className="p-1.5 bg-[#14151e]">
-                        <div className="text-[11px] font-bold text-white">ຄ່ອຍໆປາກົດ</div>
+
+                      {/* 1. Scale Control */}
+                      <div className="space-y-1.5 pt-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-300 font-semibold">Scale (ຂະໜາດ)</span>
+                          <span className="text-cyan-400 font-mono font-bold">{activeKf.scale}%</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="range"
+                            min={10}
+                            max={300}
+                            value={activeKf.scale}
+                            onChange={(e) => updateActiveKf({ scale: parseInt(e.target.value) })}
+                            className="flex-1 accent-cyan-400 h-1.5 bg-slate-700 rounded-lg cursor-pointer"
+                          />
+                          <input
+                            type="number"
+                            min={10}
+                            max={300}
+                            value={activeKf.scale}
+                            onChange={(e) => updateActiveKf({ scale: parseInt(e.target.value) || 100 })}
+                            className="w-14 bg-[#12131b] border border-slate-700 text-right px-1.5 py-0.5 rounded text-white font-mono text-[11px]"
+                          />
+                        </div>
                       </div>
-                    </button>
+
+                      {/* 2. Position X Control */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-300 font-semibold">Position X (ແນວນອນ)</span>
+                          <span className="text-cyan-400 font-mono font-bold">{activeKf.positionX}px</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="range"
+                            min={-300}
+                            max={300}
+                            value={activeKf.positionX}
+                            onChange={(e) => updateActiveKf({ positionX: parseInt(e.target.value) })}
+                            className="flex-1 accent-cyan-400 h-1.5 bg-slate-700 rounded-lg cursor-pointer"
+                          />
+                          <input
+                            type="number"
+                            value={activeKf.positionX}
+                            onChange={(e) => updateActiveKf({ positionX: parseInt(e.target.value) || 0 })}
+                            className="w-14 bg-[#12131b] border border-slate-700 text-right px-1.5 py-0.5 rounded text-white font-mono text-[11px]"
+                          />
+                        </div>
+                      </div>
+
+                      {/* 3. Position Y Control */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-300 font-semibold">Position Y (ແນວຕັ້ງ)</span>
+                          <span className="text-cyan-400 font-mono font-bold">{activeKf.positionY}%</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="range"
+                            min={5}
+                            max={95}
+                            value={activeKf.positionY}
+                            onChange={(e) => updateActiveKf({ positionY: parseInt(e.target.value) })}
+                            className="flex-1 accent-cyan-400 h-1.5 bg-slate-700 rounded-lg cursor-pointer"
+                          />
+                          <input
+                            type="number"
+                            value={activeKf.positionY}
+                            onChange={(e) => updateActiveKf({ positionY: parseInt(e.target.value) || 75 })}
+                            className="w-14 bg-[#12131b] border border-slate-700 text-right px-1.5 py-0.5 rounded text-white font-mono text-[11px]"
+                          />
+                        </div>
+                      </div>
+
+                      {/* 4. Rotation Control */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-300 font-semibold">Rotation (ມຸມໝຸນ)</span>
+                          <span className="text-cyan-400 font-mono font-bold">{activeKf.rotation}°</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="range"
+                            min={-180}
+                            max={180}
+                            value={activeKf.rotation}
+                            onChange={(e) => updateActiveKf({ rotation: parseInt(e.target.value) })}
+                            className="flex-1 accent-cyan-400 h-1.5 bg-slate-700 rounded-lg cursor-pointer"
+                          />
+                          <input
+                            type="number"
+                            value={activeKf.rotation}
+                            onChange={(e) => updateActiveKf({ rotation: parseInt(e.target.value) || 0 })}
+                            className="w-14 bg-[#12131b] border border-slate-700 text-right px-1.5 py-0.5 rounded text-white font-mono text-[11px]"
+                          />
+                        </div>
+                      </div>
+
+                      {/* 5. Opacity Control */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-300 font-semibold">Opacity (ຄວາມໂປ່ງໃສ)</span>
+                          <span className="text-cyan-400 font-mono font-bold">{activeKf.opacity}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          value={activeKf.opacity}
+                          onChange={(e) => updateActiveKf({ opacity: parseInt(e.target.value) })}
+                          className="w-full accent-cyan-400 h-1.5 bg-slate-700 rounded-lg cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Keyframes Timeline List (Jump in 1-click) */}
+                <div className="p-3.5 rounded-2xl bg-[#161824] border border-slate-800 space-y-2">
+                  <div className="text-[11px] font-bold text-slate-300">
+                    ລາຍການ Keyframes ທັງໝົດ ({keyframes.length}):
+                  </div>
+                  <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
+                    {keyframes.map((kf, i) => (
+                      <div
+                        key={kf.id}
+                        onClick={() => {
+                          setSelectedKeyframeId(kf.id);
+                          seekTo(kf.time);
+                        }}
+                        className={`p-2.5 rounded-xl flex items-center justify-between cursor-pointer border transition-all text-xs ${
+                          selectedKeyframeId === kf.id
+                            ? "bg-cyan-950/50 border-cyan-400 text-white shadow-md shadow-cyan-500/10"
+                            : "bg-[#1d1f2b] border-slate-800 text-slate-300 hover:border-slate-700"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 font-mono">
+                          <span className="text-cyan-400 font-bold">#{i + 1}</span>
+                          <span>{formatTime(kf.time)}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-mono">
+                          Scale: {kf.scale}% • Rot: {kf.rotation}°
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
             )}
 
-            {/* 2. SUB-TAB: FONT & COLOR (ຟອນ ແລະ ສີ - Matching Image 8) */}
-            {inspectorTab === "font-color" && (
-              <div className="p-3.5 rounded-2xl bg-[#1a1b24] border border-slate-800 space-y-4">
-                {/* Section 1: ຟອນ */}
-                <div className="space-y-1.5">
-                  <div className="text-xs font-bold text-white">ຟອນ</div>
-                  <button
-                    type="button"
-                    onClick={() => setShowFontDropdown(!showFontDropdown)}
-                    className="w-full p-2.5 rounded-xl bg-[#15161e] border border-slate-700/80 hover:border-slate-600 flex items-center justify-between text-left transition-all"
-                  >
-                    <span
-                      className="text-base font-bold text-white"
-                      style={{
-                        fontFamily:
-                          selectedFont === "Noto Sans Lao" ? "'Noto Sans Lao', sans-serif" : selectedFont,
-                      }}
-                    >
-                      ສະບາຍດີ
+            {/* ========================================================= */}
+            {/* 3. VIDEO CLIP INSPECTOR                                   */}
+            {/* ========================================================= */}
+            {inspectorMode === "video" && (
+              <div className="space-y-3.5 text-xs font-sans">
+                <div className="p-3.5 rounded-2xl bg-[#161824] border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-white flex items-center gap-1.5">
+                      <Film className="w-4 h-4 text-cyan-400" />
+                      <span>Video Transform & Motion</span>
                     </span>
-                    <span className="flex items-center gap-1 text-xs text-slate-300 font-medium">
-                      <span>
-                        {selectedFont === "Noto Sans Lao"
-                          ? "THAT PHON"
-                          : selectedFont === "Noto Sans Lao Looped"
-                          ? "Phetsarath OT"
-                          : selectedFont === "Noto Serif Lao"
-                          ? "Serif Lao"
-                          : "System UI"}
-                      </span>
-                      <ChevronRight
-                        className={`w-3.5 h-3.5 transition-transform ${
-                          showFontDropdown ? "rotate-90" : ""
-                        }`}
-                      />
-                    </span>
-                  </button>
+                    <span className="text-[10px] text-cyan-400 font-mono">Clip Selected</span>
+                  </div>
 
-                  {showFontDropdown && (
-                    <div className="p-1.5 rounded-xl bg-[#171822] border border-slate-700 space-y-1 shadow-lg">
-                      {[
-                        {
-                          id: "Noto Sans Lao",
-                          name: "THAT PHON",
-                          display: "ສະບາຍດີ",
-                          sub: "ມາດຕະຖານ ລາວສະໄໝໃໝ່ (ຍອດນິຍົມ)",
-                        },
-                        {
-                          id: "Noto Sans Lao Looped",
-                          name: "Phetsarath OT",
-                          display: "ສະບາຍດີ",
-                          sub: "ຟອນທາງການ ແບບມີຫົວ",
-                        },
-                        {
-                          id: "Noto Serif Lao",
-                          name: "Serif Lao",
-                          display: "ສະບາຍດີ",
-                          sub: "ຟອນເຊຣິຟ ຄລາສສິກ",
-                        },
-                        {
-                          id: "System Sans",
-                          name: "System UI",
-                          display: "ສະບາຍດີ",
-                          sub: "ຟອນມາດຕະຖານລະບົບ",
-                        },
-                      ].map((f) => (
+                  {/* Fit Mode Toggle */}
+                  <div className="space-y-1">
+                    <div className="text-[10px] text-slate-400 font-bold">ການປັບຂະໜາດວິດີໂອ (Fit Mode):</div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVideoFit("contain");
+                          showToast("ປັບເປັນ: ພໍດີໜ້າຈໍ (Contain)");
+                        }}
+                        className={`py-1.5 rounded-xl font-bold transition-all text-center ${
+                          videoFit === "contain"
+                            ? "bg-cyan-500 text-slate-950 font-black shadow"
+                            : "bg-[#202230] text-slate-300 hover:text-white"
+                        }`}
+                      >
+                        Fit (ພໍດີຈໍ)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVideoFit("cover");
+                          showToast("ປັບເປັນ: ເຕັມຈໍ (Fill Cover)");
+                        }}
+                        className={`py-1.5 rounded-xl font-bold transition-all text-center ${
+                          videoFit === "cover"
+                            ? "bg-cyan-500 text-slate-950 font-black shadow"
+                            : "bg-[#202230] text-slate-300 hover:text-white"
+                        }`}
+                      >
+                        Fill (ເຕັມຈໍ)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Video Playback Speed */}
+                  <div className="space-y-1.5 pt-2 border-t border-slate-800">
+                    <div className="flex items-center justify-between text-[11px] text-slate-300">
+                      <span className="font-semibold">ຄວາມໄວວິດີໂອ (Speed)</span>
+                      <span className="text-cyan-400 font-mono font-bold">{playbackRate}x</span>
+                    </div>
+                    <div className="grid grid-cols-6 gap-1">
+                      {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((rate) => (
                         <button
-                          key={f.id}
+                          key={rate}
                           type="button"
-                          onClick={() => {
-                            setSelectedFont(f.id as any);
-                            setShowFontDropdown(false);
-                            showToast(`ເລືອກຟອນ: ${f.name}`);
-                          }}
-                          className={`w-full p-2 rounded-lg flex items-center justify-between text-left transition-all ${
-                            selectedFont === f.id
-                              ? "bg-blue-600 text-white"
-                              : "hover:bg-[#252838] text-slate-300"
+                          onClick={() => changeSpeed(rate)}
+                          className={`py-1 rounded-lg text-[10px] font-mono font-bold transition-all ${
+                            playbackRate === rate
+                              ? "bg-cyan-500 text-slate-950 shadow font-black"
+                              : "bg-[#202230] text-slate-300 hover:text-white"
                           }`}
                         >
-                          <div>
-                            <div className="text-sm font-bold">{f.display}</div>
-                            <div className="text-[10px] text-slate-400">{f.sub}</div>
-                          </div>
-                          <span className="text-xs font-semibold">{f.name}</span>
+                          {rate}x
                         </button>
                       ))}
                     </div>
-                  )}
-                </div>
+                  </div>
 
-                {/* Section 2: ສີໄຮໄລ້ */}
-                <div className="space-y-1.5 pt-3 border-t border-slate-800">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-xs font-bold text-white">ສີໄຮໄລ້</div>
-                      <div className="text-[10px] text-slate-400">ສີຂອງຄຳທີ່ກຳລັງເວົ້າ</div>
+                  {/* Video Opacity */}
+                  <div className="space-y-1.5 pt-2 border-t border-slate-800">
+                    <div className="flex items-center justify-between text-[11px] text-slate-300">
+                      <span className="font-semibold">ຄວາມໂປ່ງໃສ (Opacity)</span>
+                      <span className="text-cyan-400 font-mono font-bold">{blendOpacity}%</span>
                     </div>
-                    <div
-                      className="w-5 h-4 rounded shadow border border-white/20"
-                      style={{ backgroundColor: highlightColor }}
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={blendOpacity}
+                      onChange={(e) => setBlendOpacity(parseInt(e.target.value))}
+                      className="w-full accent-cyan-400 h-1.5 bg-slate-700 rounded-lg cursor-pointer"
                     />
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
-                    {LAOSUB_HIGHLIGHT_COLORS.map((c) => (
-                      <button
-                        key={c.hex}
-                        type="button"
-                        onClick={() => setHighlightColor(c.hex)}
-                        className={`w-8 h-8 rounded-full ${c.bg} shadow-md transition-all ${
-                          highlightColor.toLowerCase() === c.hex.toLowerCase()
-                            ? "ring-2 ring-white scale-110 shadow-lg"
-                            : "hover:scale-105 opacity-90"
-                        }`}
-                        title={c.name}
-                      />
-                    ))}
-                    {/* ອື່ນໆ Custom Picker */}
-                    <label className="relative flex items-center gap-1 px-2.5 py-1 rounded-full border border-slate-700 bg-[#1c1e28] hover:border-slate-600 cursor-pointer text-xs text-slate-300">
-                      <span>ອື່ນໆ</span>
-                      <div
-                        className="w-4 h-3.5 rounded border border-white/30"
-                        style={{ backgroundColor: highlightColor }}
-                      />
-                      <input
-                        type="color"
-                        value={highlightColor}
-                        onChange={(e) => setHighlightColor(e.target.value)}
-                        className="sr-only"
-                      />
-                    </label>
-                  </div>
                 </div>
+              </div>
+            )}
 
-                {/* Section 3: ພື້ນຫຼັງ */}
-                <div className="space-y-1.5 pt-3 border-t border-slate-800">
+            {/* ========================================================= */}
+            {/* 4. AUDIO TRACK INSPECTOR                                  */}
+            {/* ========================================================= */}
+            {inspectorMode === "audio" && (
+              <div className="space-y-3.5 text-xs font-sans">
+                <div className="p-3.5 rounded-2xl bg-[#161824] border border-slate-800 space-y-3">
                   <div className="flex items-center justify-between">
-                    <div className="text-xs font-bold text-white">ພື້ນຫຼັງ</div>
-                    <div className="text-[11px] font-semibold text-slate-300">
-                      {!enableBackground ? (
-                        <span className="text-blue-400">ບໍ່ມີ</span>
-                      ) : (
-                        <div
-                          className="w-5 h-4 rounded shadow border border-white/20"
-                          style={{ backgroundColor: bgColor }}
-                        />
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 pt-1">
-                    {/* ບໍ່ມີ (None pill) */}
+                    <span className="font-bold text-white flex items-center gap-1.5">
+                      <Volume2 className="w-4 h-4 text-cyan-400" />
+                      <span>Audio Controls & Volume</span>
+                    </span>
                     <button
                       type="button"
-                      onClick={() => setEnableBackground(false)}
-                      className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
-                        !enableBackground
-                          ? "bg-blue-600 text-white shadow"
-                          : "bg-[#1c1e28] text-slate-400 hover:text-white border border-slate-700"
+                      onClick={toggleMute}
+                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${
+                        isMuted ? "bg-rose-500/20 text-rose-300 border-rose-500/40" : "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
                       }`}
                     >
-                      ບໍ່ມີ
+                      {isMuted ? "MUTED" : "ACTIVE"}
                     </button>
-                    {LAOSUB_BG_COLORS.map((c) => (
-                      <button
-                        key={c.hex}
-                        type="button"
-                        onClick={() => {
-                          setEnableBackground(true);
-                          setBgColor(c.hex);
-                        }}
-                        className={`w-8 h-8 rounded-full ${c.bg} shadow-md transition-all ${
-                          enableBackground && bgColor.toLowerCase() === c.hex.toLowerCase()
-                            ? "ring-2 ring-white scale-110 shadow-lg"
-                            : "hover:scale-105 opacity-90"
-                        }`}
-                        title={c.name}
-                      />
-                    ))}
-                    {/* ອື່ນໆ Custom BG Picker */}
-                    <label className="relative flex items-center gap-1 px-2.5 py-1 rounded-full border border-slate-700 bg-[#1c1e28] hover:border-slate-600 cursor-pointer text-xs text-slate-300">
-                      <span>ອື່ນໆ</span>
-                      <div
-                        className="w-4 h-3.5 rounded border border-white/30"
-                        style={{ backgroundColor: bgColor }}
-                      />
-                      <input
-                        type="color"
-                        value={bgColor}
-                        onChange={(e) => {
-                          setEnableBackground(true);
-                          setBgColor(e.target.value);
-                        }}
-                        className="sr-only"
-                      />
-                    </label>
                   </div>
-                </div>
-              </div>
-            )}
 
-            {/* 3. SUB-TAB: SIZE & SPACING (ຂະໜາດ - Matching Image 9) */}
-            {inspectorTab === "size-spacing" && (
-              <div className="p-3.5 rounded-2xl bg-[#1a1b24] border border-slate-800 space-y-4">
-                {/* 1. ຂະໜາດຕົວໜັງສື */}
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-xs font-bold text-white">
-                    <span>ຂະໜາດຕົວໜັງສື</span>
-                    <span className="font-mono text-slate-300">{(fontScale * 0.45).toFixed(1)}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={2.0}
-                    max={12.0}
-                    step={0.1}
-                    value={fontScale}
-                    onChange={(e) => setFontScale(Number(e.target.value))}
-                    className="w-full h-1.5 bg-[#252838] rounded-lg appearance-none cursor-pointer accent-blue-500"
-                  />
-                </div>
-
-                {/* 2. ຕຳແໜ່ງແນວຕັ້ງ */}
-                <div className="space-y-1 pt-2">
-                  <div className="flex items-center justify-between text-xs font-bold text-white">
-                    <span>ຕຳແໜ່ງແນວຕັ້ງ</span>
-                    <span className="font-mono text-slate-300">{positionY}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={15}
-                    max={95}
-                    value={positionY}
-                    onChange={(e) => setPositionY(Number(e.target.value))}
-                    className="w-full h-1.5 bg-[#252838] rounded-lg appearance-none cursor-pointer accent-blue-500"
-                  />
-                </div>
-
-                {/* 3. ຄວາມໜາຂອບ */}
-                <div className="space-y-1 pt-2">
-                  <div className="flex items-center justify-between text-xs font-bold text-white">
-                    <span>ຄວາມໜາຂອບ</span>
-                    <span className="font-mono text-slate-300">{(strokeWidth * 1.5).toFixed(1)}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={6}
-                    step={0.5}
-                    value={strokeWidth}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      setStrokeWidth(val);
-                      setEnableStroke(val > 0);
-                    }}
-                    className="w-full h-1.5 bg-[#252838] rounded-lg appearance-none cursor-pointer accent-blue-500"
-                  />
-                </div>
-
-                {/* 4. ເງົາ */}
-                <div className="space-y-1 pt-2">
-                  <div className="flex items-center justify-between text-xs font-bold text-white">
-                    <span>ເງົາ</span>
-                    <span className="font-mono text-slate-300">
-                      {shadowLevel === 0
-                        ? "ບໍ່ມີ"
-                        : shadowLevel === 1
-                        ? "ອ່ອນ"
-                        : shadowLevel === 2
-                        ? "ປານກາງ"
-                        : "ເຂັ້ມ"}
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={3}
-                    step={1}
-                    value={shadowLevel}
-                    onChange={(e) => setShadowLevel(Number(e.target.value))}
-                    className="w-full h-1.5 bg-[#252838] rounded-lg appearance-none cursor-pointer accent-blue-500"
-                  />
-                </div>
-
-                {/* 5. ຄຳຕໍ່ໜຶ່ງໜ້າຈໍ */}
-                <div className="space-y-1 pt-2">
-                  <div className="flex items-center justify-between text-xs font-bold text-white">
-                    <span>ຄຳຕໍ່ໜຶ່ງໜ້າຈໍ</span>
-                    <span className="font-mono text-slate-300">
-                      {wordsPerBatch === "sentence" ? "ທັງໝົດ" : `${wordsPerBatch} ຄຳ`}
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={1}
-                    max={5}
-                    step={1}
-                    value={wordsPerBatch === "sentence" ? 5 : Number(wordsPerBatch)}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      if (val >= 5) {
-                        setWordsPerBatch("sentence");
-                      } else {
-                        setWordsPerBatch(String(val) as any);
-                      }
-                    }}
-                    className="w-full h-1.5 bg-[#252838] rounded-lg appearance-none cursor-pointer accent-blue-500"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* 4. SUB-TAB: TRANSLATION (ຄຳແປ - Matching Image 10) */}
-            {inspectorTab === "translation" && (
-              <div className="p-3.5 rounded-2xl bg-[#1a1b24] border border-slate-800 space-y-3">
-                <div className="flex items-center justify-between text-xs font-bold text-white">
-                  <span>ຄຳແປອີກພາສາ</span>
-                  <span className="text-[11px] text-blue-400 font-semibold">
-                    {showBilingual ? "ພາສາໄທ" : "ບໍ່ມີ"}
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  ໃສ່ຄຳແປເປັນແຖວທີສອງໃຕ້ຊັບລາວ — ແກ້ເອງໄດ້ໃນແທັບ ແກ້ຄຳ
-                </p>
-
-                {/* Pro Feature Promotion Box (Matching Image 10) */}
-                <div className="p-3.5 rounded-xl bg-gradient-to-r from-blue-950/40 via-indigo-950/40 to-slate-900 border border-blue-500/30 space-y-1.5">
-                  <div className="text-xs font-bold text-blue-400">ຄຳແປມີໃນ Pro</div>
-                  <p className="text-[11px] text-slate-300">
-                    ໃສ່ຄຳແປອັງກິດ ຫຼື ຈີນ ໃຫ້ຄົນນອກປະເທດເຂົ້າໃຈຄລິບຂອງທ່ານ →
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-xs text-slate-300 font-semibold">ເປີດສະແດງ 2 ພາສາ:</span>
-                  <button
-                    onClick={() => setShowBilingual(!showBilingual)}
-                    className={`w-9 h-5 rounded-full transition-colors relative ${
-                      showBilingual ? "bg-blue-600" : "bg-slate-700"
-                    }`}
-                  >
-                    <div
-                      className={`w-3.5 h-3.5 rounded-full bg-white transition-transform absolute top-0.5 ${
-                        showBilingual ? "left-5" : "left-0.5"
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                <button
-                  onClick={handleTranslateAllSubtitles}
-                  disabled={isTranslating}
-                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow"
-                >
-                  <Languages className="w-3.5 h-3.5" />
-                  <span>{isTranslating ? "ກຳລັງແປດ້ວຍ AI..." : "ແປຊັບອັດຕະໂນມັດດ້ວຍ AI"}</span>
-                </button>
-              </div>
-            )}
-
-            {/* 5. SUB-TAB: AUDIO (ສຽງ) */}
-            {inspectorTab === "audio" && (
-              <div className="p-3.5 rounded-2xl bg-[#1a1b24] border border-slate-800 space-y-3.5">
-                <div className="flex items-center justify-between text-xs font-bold text-white">
-                  <span>ສຽງ ແລະ ຄວາມໄວ (Audio & Speed)</span>
-                  <button
-                    onClick={() => setIsMuted(!isMuted)}
-                    className={`p-1.5 rounded-lg border text-xs font-semibold ${
-                      isMuted ? "bg-red-950/40 border-red-500 text-red-400" : "bg-slate-800 border-slate-700 text-white"
-                    }`}
-                  >
-                    {isMuted ? "ປິດສຽງຢູ່ (Muted)" : "ເປີດສຽງ (Unmuted)"}
-                  </button>
-                </div>
-
-                <div className="space-y-1.5 pt-1">
-                  <div className="flex items-center justify-between text-xs text-slate-300">
-                    <span>ຄວາມໄວສຽງເວົ້າ:</span>
-                    <span className="font-mono text-cyan-400">{playbackRate}x</span>
-                  </div>
-                  <div className="grid grid-cols-5 gap-1">
-                    {[0.5, 0.75, 1.0, 1.25, 1.5].map((rate) => (
-                      <button
-                        key={rate}
-                        onClick={() => {
-                          setPlaybackRate(rate);
-                          if (videoRef.current) videoRef.current.playbackRate = rate;
-                        }}
-                        className={`py-1 text-center text-xs font-bold rounded ${
-                          playbackRate === rate ? "bg-cyan-500 text-black" : "bg-slate-800 text-slate-300 hover:text-white"
-                        }`}
-                      >
-                        {rate}x
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* 6. SUB-TAB: MINE / SAVED STYLES (ຂອງຂ້ອຍ) */}
-            {inspectorTab === "mine" && (
-              <div className="p-3.5 rounded-2xl bg-[#1a1b24] border border-slate-800 space-y-3">
-                <div className="text-xs font-bold text-white">ບັນທຶກສະໄຕລ໌ຂອງຂ້ອຍ</div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="ຕັ້ງຊື່ສະໄຕລ໌..."
-                    value={newSavedName}
-                    onChange={(e) => setNewSavedName(e.target.value)}
-                    className="flex-1 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-                  />
-                  <button
-                    onClick={() => {
-                      if (!newSavedName.trim()) {
-                        showToast("ກະລຸນາໃສ່ຊື່ສະໄຕລ໌");
-                        return;
-                      }
-                      setSavedStyles([
-                        ...savedStyles,
-                        {
-                          name: newSavedName.trim(),
-                          preset: activePreset,
-                          textColor,
-                          highlight: highlightColor,
-                          hasBg: enableBackground,
-                        },
-                      ]);
-                      setNewSavedName("");
-                      showToast("ບັນທຶກສະໄຕລ໌ສຳເລັດແລ້ວ!");
-                    }}
-                    className="px-3 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black text-xs font-bold"
-                  >
-                    ບັນທຶກ
-                  </button>
-                </div>
-
-                <div className="space-y-2 pt-2">
-                  {savedStyles.map((item, idx) => (
-                    <div
-                      key={idx}
-                      className="p-2.5 rounded-xl bg-[#15161e] border border-slate-800 flex items-center justify-between"
-                    >
-                      <div>
-                        <div className="text-xs font-bold text-white">{item.name}</div>
-                        <div className="text-[10px] text-slate-400">
-                          ໄຮໄລຕ໌: {item.highlight} • ພື້ນຫຼັງ: {item.hasBg ? "ມີ" : "ບໍ່ມີ"}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          setTextColor(item.textColor);
-                          setHighlightColor(item.highlight);
-                          setEnableBackground(item.hasBg);
-                          showToast(`ນຳໃຊ້ "${item.name}"`);
-                        }}
-                        className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold"
-                      >
-                        ນຳໃຊ້
-                      </button>
+                  {/* Master Volume */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] text-slate-300">
+                      <span>ລະດັບຄວາມດັງສຽງ (Volume)</span>
+                      <span className="text-cyan-400 font-mono font-bold">{isMuted ? "0%" : "100%"}</span>
                     </div>
-                  ))}
+                    <button
+                      type="button"
+                      onClick={toggleMute}
+                      className="w-full py-2.5 rounded-xl bg-[#202230] hover:bg-[#2b2e40] text-slate-200 font-bold text-xs flex items-center justify-center gap-2 border border-slate-700/60 transition-all"
+                    >
+                      {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-cyan-400" />}
+                      <span>{isMuted ? "ປິດສຽງຢູ່ (Muted) - ກົດເພື່ອເປີດສຽງ" : "ເປີດສຽງປົກກະຕິ - ກົດເພື່ອປິດສຽງ"}</span>
+                    </button>
+                  </div>
+
+                  {/* Fade In & Fade Out */}
+                  <div className="space-y-2 pt-2 border-t border-slate-800">
+                    <div className="text-[10px] text-slate-400 font-bold">Fade In / Fade Out Curves:</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="p-2.5 rounded-xl bg-[#1c1e2b] border border-slate-800 text-center">
+                        <div className="text-[10px] text-slate-400">Fade In</div>
+                        <div className="text-xs font-mono font-bold text-cyan-400">0.5s</div>
+                      </div>
+                      <div className="p-2.5 rounded-xl bg-[#1c1e2b] border border-slate-800 text-center">
+                        <div className="text-[10px] text-slate-400">Fade Out</div>
+                        <div className="text-xs font-mono font-bold text-cyan-400">0.8s</div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -5867,53 +5107,61 @@ export default function EditorPage() {
               <RotateCw className="w-3.5 h-3.5" />
             </button>
 
-            {/* CapCut Split Tool ][ (Ctrl+B) */}
+            {/* Prominent High-Contrast Split Button (S / Ctrl+B) */}
             <button
               type="button"
               onClick={handleSplitVideoClipAtPlayhead}
-              title="Split Clip at Playhead (Ctrl+B)"
-              className="p-1.5 rounded hover:bg-[#252838] text-slate-200 hover:text-cyan-400 transition-colors"
+              title="ແຍກຄລິບກົງເສັ້ນຫຼິ້ນ (Split Clip - S / Ctrl+B)"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs shadow-md shadow-cyan-500/20 active:scale-95 transition-all"
             >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M7 4H4v16h3" />
-                <path d="M17 4h3v16h-3" />
-              </svg>
+              <Scissors className="w-3.5 h-3.5" />
+              <span>ແຍກຄລິບ (S)</span>
             </button>
 
-            {/* CapCut Trim Left (Q) */}
+            {/* Quick Trim Start (Q) */}
             <button
               type="button"
               onClick={handleTrimStartToPlayhead}
-              title="Trim Left to Playhead (Q)"
-              className="p-1.5 rounded hover:bg-[#252838] text-slate-400 hover:text-white transition-colors"
+              title="ຕັດຫົວຄລິບຮອດ Playhead (Trim Start - Q)"
+              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#202330] hover:bg-[#2b2f42] text-slate-200 text-xs font-semibold transition-colors border border-slate-700/60"
             >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M7 4H4v16h3" opacity="0.3" strokeDasharray="2 2" />
-                <path d="M17 4h3v16h-3" />
-              </svg>
+              <span>⇥Q ຕັດໜ້າ</span>
             </button>
 
-            {/* CapCut Trim Right (W) */}
+            {/* Quick Trim End (W) */}
             <button
               type="button"
               onClick={handleTrimEndToPlayhead}
-              title="Trim Right to Playhead (W)"
-              className="p-1.5 rounded hover:bg-[#252838] text-slate-400 hover:text-white transition-colors"
+              title="ຕັດທ້າຍຄລິບຮອດ Playhead (Trim End - W)"
+              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#202330] hover:bg-[#2b2f42] text-slate-200 text-xs font-semibold transition-colors border border-slate-700/60"
             >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M7 4H4v16h3" />
-                <path d="M17 4h3v16h-3" opacity="0.3" strokeDasharray="2 2" />
-              </svg>
+              <span>W⇤ ຕັດຫຼັງ</span>
             </button>
 
-            {/* Delete (Del) */}
+            {/* Delete Selected (Del) */}
             <button
               type="button"
               onClick={handleDeleteActiveSelection}
-              title="Delete Active Item (Del)"
-              className="p-1.5 rounded hover:bg-rose-950/60 text-slate-300 hover:text-rose-400 transition-colors"
+              title="ລຶບສິ່ງທີ່ເລືອກ (Del / Backspace)"
+              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 text-xs font-semibold transition-colors border border-rose-500/30"
             >
               <Trash2 className="w-3.5 h-3.5" />
+              <span>ລຶບ</span>
+            </button>
+
+            {/* Keyframe Toggle at Playhead */}
+            <button
+              type="button"
+              onClick={handleToggleKeyframeAtPlayhead}
+              title="Toggle Keyframe at Playhead (Shift+Alt+K)"
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold transition-all border ${
+                hasKeyframeAtPlayhead
+                  ? "bg-cyan-500/20 text-cyan-300 border-cyan-400"
+                  : "bg-[#202330] text-slate-400 border-slate-700/60 hover:text-white"
+              }`}
+            >
+              <span>{hasKeyframeAtPlayhead ? "◆" : "◇"}</span>
+              <span>ຄີຍ໌ເຟຣມ</span>
             </button>
 
             {/* Snapping Magnet */}
@@ -6212,23 +5460,20 @@ export default function EditorPage() {
             >
               {/* Seconds Ruler with Pin Playhead */}
               <div className="h-6 border-b border-[#262833] relative flex items-center text-[9px] text-slate-500 font-mono">
-                {Array.from({ length: Math.ceil((duration || 15) / 2) + 1 }).map((_, i) => {
-                  const sec = i * 2;
-                  const leftPct = (sec / (duration || 15)) * 100;
-                  return (
-                    <div
-                      key={i}
-                      style={{ left: `${leftPct}%` }}
-                      className="absolute flex flex-col items-center -translate-x-1/2"
-                    >
-                      <div className="h-1.5 w-px bg-slate-700" />
-                      <span className="text-[8px]">{sec}s</span>
-                    </div>
-                  );
-                })}
+                {rulerTicks.map(({ sec, leftPct }, i) => (
+                  <div
+                    key={i}
+                    style={{ left: `${leftPct}%` }}
+                    className="absolute flex flex-col items-center -translate-x-1/2"
+                  >
+                    <div className="h-1.5 w-px bg-slate-700" />
+                    <span className="text-[8px]">{sec}s</span>
+                  </div>
+                ))}
 
                 {/* CapCut Pin Playhead Handle (White Shield / Teardrop shape) */}
                 <div
+                  ref={playheadPinRef}
                   style={{
                     left: `${((currentTime / (duration || 15)) * 100).toFixed(2)}%`,
                   }}
@@ -6300,17 +5545,23 @@ export default function EditorPage() {
                 {keyframes.map((kf) => {
                   const leftPct = (kf.time / (duration || 15)) * 100;
                   const isNearPlayhead = Math.abs(kf.time - currentTime) <= 0.25;
+                  const isSelectedKf = selectedKeyframeId === kf.id;
                   return (
                     <div
                       key={kf.id}
                       onClick={(e) => {
                         e.stopPropagation();
+                        setSelectedKeyframeId(kf.id);
+                        setInspectorMode("keyframe");
                         seekTo(kf.time);
+                        showToast(`ເລືອກ Keyframe: ${formatTime(kf.time)}`);
                       }}
                       style={{ left: `${leftPct}%` }}
-                      title={`Keyframe at ${formatTime(kf.time)}`}
+                      title={`Keyframe at ${formatTime(kf.time)} (Click to Edit)`}
                       className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 cursor-pointer z-30 transition-transform hover:scale-125 ${
-                        isNearPlayhead
+                        isSelectedKf
+                          ? "w-3.5 h-3.5 rotate-45 bg-[#12E8FF] border-2 border-white shadow-[0_0_12px_#12E8FF] ring-2 ring-cyan-400 z-40"
+                          : isNearPlayhead
                           ? "w-2.5 h-2.5 rotate-45 bg-[#12E8FF] border border-white shadow-[0_0_8px_#12E8FF]"
                           : "w-2 h-2 rotate-45 bg-cyan-400 border border-cyan-200"
                       }`}
@@ -6466,22 +5717,28 @@ export default function EditorPage() {
                   {keyframes.map((kf) => {
                     const leftPct = (kf.time / (duration || 15)) * 100;
                     const isNearPlayhead = Math.abs(kf.time - currentTime) <= 0.25;
+                    const isSelectedKf = selectedKeyframeId === kf.id;
                     return (
                       <div
                         key={kf.id}
                         onClick={(e) => {
                           e.stopPropagation();
+                          setSelectedKeyframeId(kf.id);
+                          setInspectorMode("keyframe");
                           seekTo(kf.time);
+                          showToast(`ເລືອກ Keyframe: ${formatTime(kf.time)}`);
                         }}
                         style={{ left: `${leftPct}%` }}
-                        title={`Keyframe @ ${formatTime(kf.time)}: Scale ${kf.scale}%, PosX ${kf.positionX}px, Rot ${kf.rotation}°`}
+                        title={`Keyframe @ ${formatTime(kf.time)}: Scale ${kf.scale}%, PosX ${kf.positionX}px, Rot ${kf.rotation}° (Click to Edit)`}
                         className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 cursor-pointer transition-transform hover:scale-150 z-30 flex flex-col items-center group"
                       >
                         <div
-                          className={`w-3 h-3 rotate-45 border ${
-                            isNearPlayhead
-                              ? "bg-[#12E8FF] border-white shadow-[0_0_8px_#12E8FF]"
-                              : "bg-cyan-500/80 border-cyan-300"
+                          className={`rotate-45 border transition-all ${
+                            isSelectedKf
+                              ? "w-4 h-4 bg-[#12E8FF] border-2 border-white shadow-[0_0_12px_#12E8FF] ring-2 ring-cyan-400"
+                              : isNearPlayhead
+                              ? "w-3 h-3 bg-[#12E8FF] border-white shadow-[0_0_8px_#12E8FF]"
+                              : "w-2.5 h-2.5 bg-cyan-500/80 border-cyan-300"
                           }`}
                         />
                         <span className="text-[8px] font-mono text-cyan-300 opacity-0 group-hover:opacity-100 transition-opacity bg-black/90 px-1 rounded mt-1 whitespace-nowrap pointer-events-none">
@@ -6540,6 +5797,7 @@ export default function EditorPage() {
 
               {/* CapCut Full-Height Playhead Vertical Needle */}
               <div
+                ref={playheadNeedleRef}
                 style={{
                   left: `${((currentTime / (duration || 15)) * 100).toFixed(2)}%`,
                 }}

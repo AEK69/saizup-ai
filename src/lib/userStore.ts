@@ -76,6 +76,42 @@ export const TIER_CONFIG = {
   },
 };
 
+export interface DynamicCostParams {
+  aiVersion: 'v1' | 'v2' | 'v3';
+  durationSeconds?: number;
+  language?: 'lo' | 'th' | 'en' | 'mixed';
+  hasTranslation?: boolean;
+}
+
+/**
+ * Dynamic credit calculation based on AI model, video duration, and language complexity.
+ * Base: v1=5, v2=10, v3=20
+ * Duration: +1 credit per 15s above 30s
+ * Complexity: +2 credits for code-switching or bilingual translation
+ */
+export function calculateDynamicCreditsCost(params: DynamicCostParams): {
+  baseCost: number;
+  durationCost: number;
+  complexityCost: number;
+  totalCost: number;
+  breakdown: string;
+} {
+  const baseCost = AI_COST_CONFIG[params.aiVersion]?.creditsCost || 5;
+  const duration = Math.max(1, params.durationSeconds || 15);
+  const extraSec = Math.max(0, duration - 30);
+  const durationCost = Math.ceil(extraSec / 15);
+  const complexityCost = params.language === 'mixed' || params.hasTranslation ? 2 : 0;
+  const totalCost = baseCost + durationCost + complexityCost;
+
+  return {
+    baseCost,
+    durationCost,
+    complexityCost,
+    totalCost,
+    breakdown: `Base ${baseCost} + ຄວາມຍາວ ${durationCost} + ພາສາ/ແປ ${complexityCost} = ${totalCost} Credits`,
+  };
+}
+
 export const AI_COST_CONFIG = {
   v1: {
     id: 'v1',
@@ -366,31 +402,45 @@ export const UserStore = {
     }
   },
 
-  // Deduct credits for AI usage (v1 = 5, v2 = 10, v3 = 20)
+  // Deduct credits for AI usage (Supports dynamic calculation or fixed cost)
   deductCredits(
     email: string,
-    aiVersion: 'v1' | 'v2' | 'v3' = 'v1',
+    costOrParams: 'v1' | 'v2' | 'v3' | DynamicCostParams | number = 'v1',
     taskDetail: string = 'ສ້າງຊັບໄຕເຕິລ AI'
-  ): { success: boolean; remainingCredits: number; error?: string } {
+  ): { success: boolean; remainingCredits: number; costDeducted: number; error?: string } {
     const users = ensureStorage();
     const cleanEmail = email.toLowerCase().trim();
     const index = users.findIndex((u) => u.email.toLowerCase() === cleanEmail);
 
     if (index === -1) {
-      return { success: false, remainingCredits: 0, error: 'User not found' };
+      return { success: false, remainingCredits: 0, costDeducted: 0, error: 'User not found' };
     }
 
     let user = this.checkAndRefreshDailyCredits(users[index]);
     if (user.isOwner) {
-      return { success: true, remainingCredits: 9999 };
+      return { success: true, remainingCredits: 9999, costDeducted: 0 };
     }
 
-    const cost = AI_COST_CONFIG[aiVersion]?.creditsCost || 5;
+    let cost = 5;
+    let label = 'AI Engine';
+
+    if (typeof costOrParams === 'number') {
+      cost = Math.max(1, costOrParams);
+      label = `AI Service (${cost} Credits)`;
+    } else if (typeof costOrParams === 'string') {
+      cost = AI_COST_CONFIG[costOrParams]?.creditsCost || 5;
+      label = `AI Engine ${costOrParams.toUpperCase()}`;
+    } else if (typeof costOrParams === 'object') {
+      const dynamic = calculateDynamicCreditsCost(costOrParams);
+      cost = dynamic.totalCost;
+      label = `AI Engine ${costOrParams.aiVersion.toUpperCase()} [${dynamic.breakdown}]`;
+    }
 
     if (user.credits < cost) {
       return {
         success: false,
         remainingCredits: user.credits,
+        costDeducted: 0,
         error: `ເຄຣດິດບໍ່ພຽງພໍ (ຕ້ອງການ ${cost} ເຄຣດິດ, ທ່ານມີ ${user.credits} ເຄຣດິດ). ກະລຸນາເຕີມເຄຣດິດ`,
       };
     }
@@ -402,7 +452,7 @@ export const UserStore = {
     user.activityHistory = [
       {
         id: `act_${Date.now()}`,
-        action: `ໃຊ້ງານ AI ${aiVersion.toUpperCase()} (-${cost} ເຄຣດິດ)`,
+        action: `ໃຊ້ງານ ${label} (-${cost} ເຄຣດິດ)`,
         detail: `${taskDetail} | ເຄຣດິດຄົງເຫຼືອ: ${user.credits}`,
         timestamp: new Date().toISOString(),
       },
@@ -411,7 +461,7 @@ export const UserStore = {
 
     users[index] = user;
     saveStorage(users);
-    return { success: true, remainingCredits: user.credits };
+    return { success: true, remainingCredits: user.credits, costDeducted: cost };
   },
 
   // Top up user credits

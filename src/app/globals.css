@@ -46,7 +46,7 @@ nextjs-portal {
   --bg-tertiary: #1D1D1E;
   --accent-cyan: #12E8FF;
   --accent-blue: #5B8FFF;
-  --font-capcut: 'Noto Sans', 'Noto Sans Lao', 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-capcut: 'Noto Sans Lao', 'Noto Sans Thai', 'Noto Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 * {

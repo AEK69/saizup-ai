@@ -381,7 +381,7 @@ export default function Pricing() {
           planId={selectedPlan.id}
           planName={selectedPlan.name}
           amountLAK={selectedPlan.amountLAK}
-          creditsGiven={selectedPlan.credits}
+          credits={selectedPlan.credits}
           onPaymentSuccess={() => {
             setSelectedPlan(null);
             alert("🎉 ຊຳລະເງິນສຳເລັດແລ້ວ! ລະບົບໄດ້ເພີ່ມເຄຣດິດໃຫ້ບັນຊີຂອງທ່ານຮຽບຮ້ອຍ.");

@@ -162,8 +162,36 @@ export function getContextualEmoji(word: string): string | undefined {
 }
 
 /**
- * 4. Align Words to Subtitle Duration with Micro-Timing
- * Distributes word start and end seconds across a subtitle block proportionally by character length
+ * Calculate acoustic syllable & mora weight for accurate phonetic duration
+ * Accounts for tone marks (0 weight) vs long vowels (1.6 weight)
+ */
+export function estimateAcousticSyllableWeight(word: string): number {
+  if (!word) return 1;
+  let weight = 0;
+  for (let i = 0; i < word.length; i++) {
+    const code = word.charCodeAt(i);
+    // Lao / Thai tone marks: 0 duration (acoustic diacritic)
+    if ((code >= 0x0EC8 && code <= 0x0ECB) || (code >= 0x0E48 && code <= 0x0E4B)) {
+      continue;
+    }
+    // Lao / Thai long vowels: 1.6 duration weight
+    if (
+      code === 0x0EB2 || code === 0x0EB5 || code === 0x0EB7 || code === 0x0EB9 ||
+      code === 0x0EC2 || code === 0x0EC1 || code === 0x0EC0 ||
+      code === 0x0E32 || code === 0x0E35 || code === 0x0E37 || code === 0x0E39 ||
+      code === 0x0E42 || code === 0x0E41 || code === 0x0E40
+    ) {
+      weight += 1.6;
+    } else {
+      weight += 1.0;
+    }
+  }
+  return Math.max(1, weight);
+}
+
+/**
+ * 4. Align Words to Subtitle Duration with Acoustic Micro-Timing
+ * Distributes word start and end seconds across a subtitle block proportionally by acoustic weight
  */
 export function buildWordLevelTimestamps(
   words: string[],
@@ -173,28 +201,25 @@ export function buildWordLevelTimestamps(
 ): WordToken[] {
   if (!words || words.length === 0) return [];
 
-  const totalChars = words.reduce((sum, w) => sum + w.length, 0);
-  const totalDuration = Math.max(0.5, blockEnd - blockStart);
+  const wordWeights = words.map((w) => estimateAcousticSyllableWeight(w));
+  const totalWeight = wordWeights.reduce((sum, wt) => sum + wt, 0);
+  const totalDuration = Math.max(0.4, blockEnd - blockStart);
 
   let currentStart = blockStart;
   const wordTokens: WordToken[] = [];
 
   words.forEach((wordText, idx) => {
-    // Proportional duration with minimum 0.12s per word
-    const ratio = totalChars > 0 ? wordText.length / totalChars : 1 / words.length;
-    const wordDur = Math.max(0.15, Number((totalDuration * ratio).toFixed(2)));
-    const wordEnd = Number(Math.min(blockEnd, currentStart + wordDur).toFixed(2));
+    const ratio = totalWeight > 0 ? wordWeights[idx] / totalWeight : 1 / words.length;
+    const wordDur = Math.max(0.12, Number((totalDuration * ratio).toFixed(3)));
+    const wordEnd = Number(Math.min(blockEnd, currentStart + wordDur).toFixed(3));
 
-    // High energy or technical word gets isEmphasis
     const isEnglish = /^[A-Za-z0-9]+$/.test(wordText);
     const emoji = getContextualEmoji(wordText);
-
-    // Randomize realistic confidence score (mostly 0.92 - 0.99, occasionally lower for review flag)
     const conf = defaultConfidence;
 
     wordTokens.push({
       text: wordText,
-      startSec: Number(currentStart.toFixed(2)),
+      startSec: Number(currentStart.toFixed(3)),
       endSec: wordEnd,
       confidence: conf,
       isEmphasis: isEnglish || !!emoji || wordText.length >= 6,
@@ -205,6 +230,32 @@ export function buildWordLevelTimestamps(
   });
 
   return wordTokens;
+}
+
+/**
+ * Nudge all subtitles and word tokens by +/- milliseconds for fine-tuning sync
+ */
+export function nudgeSubtitlesTiming<T extends { time: number; endTime: number; words?: any[] }>(
+  subtitles: T[],
+  offsetMs: number
+): T[] {
+  const deltaSec = offsetMs / 1000;
+  return subtitles.map((sub) => {
+    const newStart = Math.max(0, Number((sub.time + deltaSec).toFixed(3)));
+    const newEnd = Math.max(newStart + 0.2, Number((sub.endTime + deltaSec).toFixed(3)));
+    return {
+      ...sub,
+      time: newStart,
+      endTime: newEnd,
+      words: Array.isArray(sub.words)
+        ? sub.words.map((w) => ({
+            ...w,
+            startSec: Math.max(0, Number(((w.startSec ?? sub.time) + deltaSec).toFixed(3))),
+            endSec: Math.max(0, Number(((w.endSec ?? sub.endTime) + deltaSec).toFixed(3))),
+          }))
+        : sub.words,
+    };
+  });
 }
 
 /**

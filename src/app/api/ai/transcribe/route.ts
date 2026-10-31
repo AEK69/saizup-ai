@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { transcribeWithAI, generateSmartFallbackSubtitles, AiEngineVersion } from '@/lib/gemini';
-import { UserStore, AI_COST_CONFIG } from '@/lib/userStore';
+import { UserStore, AI_COST_CONFIG, calculateDynamicCreditsCost } from '@/lib/userStore';
 import { checkRateLimit, validateBase64Audio, sanitizeText } from '@/lib/security';
 import {
   sanitizeCodeSwitching,
@@ -80,13 +80,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 4. Credit Deduction Check
-    const cost = AI_COST_CONFIG[selectedVersion]?.creditsCost || 5;
+    // 4. Dynamic Credit Deduction (AI Version + Video Duration + Complexity)
+    const dynamicParams = {
+      aiVersion: selectedVersion,
+      durationSeconds: numDuration,
+      language: (language as any) || 'lo',
+      hasTranslation: false,
+    };
+    const dynamicCostInfo = calculateDynamicCreditsCost(dynamicParams);
+    const cost = dynamicCostInfo.totalCost;
+
     if (userEmail && user) {
       const deductResult = UserStore.deductCredits(
         userEmail,
-        selectedVersion,
-        `ຖອດສຽງຊັບໄຕເຕິລ (${selectedVersion.toUpperCase()}, ຄວາມຍາວ ${Math.round(numDuration)} ວິ)`
+        dynamicParams,
+        `ຖອດສຽງຊັບໄຕເຕິລ (${selectedVersion.toUpperCase()}, ຄວາມຍາວ ${Math.round(numDuration)} ວິ, ${dynamicCostInfo.breakdown})`
       );
 
       if (!deductResult.success) {
@@ -95,6 +103,7 @@ export async function POST(req: NextRequest) {
             success: false,
             error: deductResult.error || `ເຄຣດິດບໍ່ພຽງພໍ (ຕ້ອງການ ${cost} ເຄຣດິດ)`,
             creditsNeeded: cost,
+            costBreakdown: dynamicCostInfo.breakdown,
             remainingCredits: deductResult.remainingCredits,
           },
           { status: 402 }

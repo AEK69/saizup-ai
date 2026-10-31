@@ -1,5 +1,33 @@
 [
   {
+    "id": "usr_1793419287872",
+    "name": "Aekaphon XAYYABED",
+    "email": "kobx20022@gmail.com",
+    "avatar": "https://lh3.googleusercontent.com/a/ACg8ocKrvUOc3_wzpmSNwqcvJlestgkLm8xQD9oGRJkTEVI5b6RkwUiQ=s96-c",
+    "picture": "https://lh3.googleusercontent.com/a/ACg8ocKrvUOc3_wzpmSNwqcvJlestgkLm8xQD9oGRJkTEVI5b6RkwUiQ=s96-c",
+    "provider": "google",
+    "credits": 15,
+    "dailyCreditsUsed": 0,
+    "lastDailyCreditReset": "2026-10-31",
+    "plan": "Free",
+    "billingCycle": "none",
+    "trialDaysRemaining": 7,
+    "status": "trial",
+    "createdAt": "2026-10-31T04:01:27.872Z",
+    "lastLoginAt": "2026-10-31T04:01:27.872Z",
+    "totalVideosGenerated": 0,
+    "totalSpentLAK": 0,
+    "isOwner": false,
+    "activityHistory": [
+      {
+        "id": "act_1793419287872",
+        "action": "ລົງທະບຽນໃໝ່ (Register)",
+        "detail": "ເຂົ້າໃຊ້ງານຄັ້ງທຳອິດຜ່ານ google (ຮັບ 15 Credits ຟຣີ/ມື້, ຄລິບ 30 ວິ)",
+        "timestamp": "2026-10-31T04:01:27.872Z"
+      }
+    ]
+  },
+  {
     "id": "usr_kobx2_owner",
     "name": "11 ,AEKAPHON XAYYABED",
     "email": "kobx2.2005@gmail.com",
@@ -11,11 +39,17 @@
     "trialDaysRemaining": 365,
     "status": "active",
     "createdAt": "2026-10-01T08:00:00.000Z",
-    "lastLoginAt": "2026-10-30T18:03:45.179Z",
+    "lastLoginAt": "2026-10-31T04:01:00.318Z",
     "totalVideosGenerated": 148,
     "totalSpentLAK": 0,
     "isOwner": true,
     "activityHistory": [
+      {
+        "id": "act_1793419260318",
+        "action": "ເຂົ້າສູ່ລະບົບ (Login)",
+        "detail": "ເຂົ້າສູ່ລະບົບຜ່ານ google",
+        "timestamp": "2026-10-31T04:01:00.318Z"
+      },
       {
         "id": "act_1793383425180",
         "action": "ເຂົ້າສູ່ລະບົບ (Login)",
