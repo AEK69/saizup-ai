@@ -2,9 +2,7 @@
 // Backend intelligence engine for Lao, Thai, and Mixed languages
 
 export const INTERNAL_AI_KEY =
-  process.env.GEMINI_API_KEY ||
-  process.env.NEXT_PUBLIC_GEMINI_API_KEY ||
-  'AQ.Ab8RN6KuOM88-WiH6LqPQ78brmzp9yut44wNx3E6iqn82VUtiw';
+  process.env.GEMINI_API_KEY || '';
 
 export interface SubtitleItem {
   id: string;
@@ -12,11 +10,82 @@ export interface SubtitleItem {
   endTime: number;
   text: string;
   translatedText?: string;
-  words: { text: string; active?: boolean }[];
+  words: { text: string; active?: boolean; startSec?: number; endSec?: number; confidence?: number; isEmphasis?: boolean; emoji?: string }[];
   groupId?: string;
 }
 
-export type AiEngineVersion = 'v1' | 'v2' | 'v3';
+/**
+ * Public quality levels exposed by SAIZUP.  These are intentionally stable
+ * product labels; the provider model behind each level is kept here on the
+ * server so it is never exposed as a browser-configurable setting.
+ */
+export type AiEngineVersion = 'v1' | 'v2' | 'v3' | 'v4';
+
+export const AI_ENGINE_MODELS: Record<AiEngineVersion, {
+  label: string;
+  primary: string;
+  fallbacks: string[];
+  thinkingLevel?: 'low' | 'medium';
+}> = {
+  // Kept deliberately economical for the free plan.
+  v1: {
+    label: 'Gemini 3.5 Flash-Lite',
+    primary: 'gemini-3.5-flash-lite',
+    fallbacks: [],
+  },
+  // The current fast production model: the best speed/quality trade-off.
+  v2: {
+    label: 'Gemini 3.8 Flash',
+    primary: 'gemini-3.8-flash',
+    fallbacks: ['gemini-3.5-flash-lite'],
+  },
+  // A higher-reasoning model for mixed Lao/Thai/English translations.
+  v3: {
+    label: 'Gemini 3.1 Pro',
+    primary: 'gemini-3.1-pro-preview',
+    fallbacks: ['gemini-3.8-flash', 'gemini-3.5-flash-lite'],
+    thinkingLevel: 'low',
+  },
+  // Flagship model; deliberately only available to the Pro plan.
+  v4: {
+    label: 'Gemini 4 Argon',
+    primary: 'gemini-4-argon',
+    fallbacks: ['gemini-3.1-pro-preview', 'gemini-3.8-flash'],
+    thinkingLevel: 'low',
+  },
+};
+
+export function isAiEngineVersion(value: unknown): value is AiEngineVersion {
+  return value === 'v1' || value === 'v2' || value === 'v3' || value === 'v4';
+}
+
+function getModelResponseText(data: any): string {
+  const parts = data?.candidates?.[0]?.content?.parts;
+  if (!Array.isArray(parts)) return '';
+  return parts
+    .map((part) => typeof part?.text === 'string' ? part.text : '')
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+}
+
+function getGenerationConfig(model: string, temperature: number) {
+  const profile = Object.values(AI_ENGINE_MODELS).find((item) => item.primary === model);
+  // Argon ignores sampling controls. Low thinking is sufficient for strict
+  // JSON subtitle work and prevents spending a large amount on internal reasoning.
+  if (model === 'gemini-4-argon') {
+    return {
+      responseMimeType: 'application/json',
+      maxOutputTokens: 8192,
+      thinkingConfig: { thinkingLevel: profile?.thinkingLevel || 'low' },
+    };
+  }
+  return {
+    responseMimeType: 'application/json',
+    temperature,
+    ...(profile?.thinkingLevel ? { thinkingConfig: { thinkingLevel: profile.thinkingLevel } } : {}),
+  };
+}
 
 export interface TranscribeParams {
   language: 'lo' | 'th' | 'en' | 'mixed';
@@ -32,9 +101,10 @@ export interface TranscribeParams {
  * Transcribe audio directly into timestamped subtitles with word-by-word tokens
  * Supports mixed Lao + English, Thai + English, and natural code-switching.
  * Model versions:
- * - v1: AI Version 1 (Standard Fast Engine, 5 credits)
- * - v2: AI Version 2 (Balanced Pro Engine, 10 credits)
- * - v3: AI Version 3 (Ultra Precision Engine, 20 credits)
+ * - v1: Gemini 3.5 Flash-Lite (Free)
+ * - v2: Gemini 3.8 Flash (Gold)
+ * - v3: Gemini 3.1 Pro (Plus)
+ * - v4: Gemini 4 Argon (Pro)
  */
 export async function transcribeWithAI(
   params: TranscribeParams,
@@ -43,9 +113,15 @@ export async function transcribeWithAI(
   const version = params.aiVersion || 'v1';
   const is30sInterval = params.intervalMode === '30s';
 
+  if (!apiKey) {
+    throw new Error('ຍັງບໍ່ໄດ້ຕັ້ງ GEMINI_API_KEY: ເພີ່ມ Gemini API key ຈາກ Google AI Studio ໃນ .env.local ແລ້ວ restart server');
+  }
+
   const langDescription =
-    params.language === 'lo' || params.language === 'mixed'
-      ? 'Lao (ພາສາລາວ) primarily, with natural English loanwords'
+    params.language === 'mixed'
+      ? 'Mixed Lao, Thai, and English speech; preserve every language as spoken'
+      : params.language === 'lo'
+      ? 'Lao (ພາສາລາວ) speech; retain any other language if it is spoken'
       : params.language === 'th'
       ? 'Thai (ภาษาไทย) primarily, with natural English loanwords'
       : 'English';
@@ -59,40 +135,29 @@ Target language context: ${langDescription}.
 Engine version: ${version.toUpperCase()}
 
 CRITICAL TASK:
-Transcribe the speech from the video audio into accurate, natural subtitle blocks.
+Transcribe only speech that is actually audible in this audio. This is verbatim speech recognition, not translation, rewriting, summarizing, or guessing. Preserve the speaker's language, code-switching, names, fillers, and repeated words. Never replace Thai with Lao (or Lao with Thai) just because of the selected language. Leave music and silence without subtitles. If a short phrase is genuinely unclear, use [inaudible] instead of inventing words.
 
-STRICT LANGUAGE & CODE-SWITCHING RULES (MANDATORY):
-1. Target Script Rule:
-   - If language is "lo" (Lao) or "mixed": ALL sentences MUST be written primarily in authentic Lao script (ພາສາລາວ). Under NO circumstances should Lao transcription be written in pure English or pure Roman script (ຫ້າມພາສາອັງກິດລ້ວນເດັດຂາດ)!
-   - If language is "th" (Thai): ALL sentences MUST be written primarily in Thai script (ภาษาไทย).
-2. English Loanwords & Tech Terms:
-   - When the speaker mentions modern technical terms, apps, or brand names (such as "AI", "CapCut", "TikTok", "Facebook", "Video", "Reels", "Content", "Review", "Online", "Digital", "Subscribe", "Channel", "Editor", "Like", "Follow", "Project", "App", "Link", "iPhone", "PC"), YOU MUST WRITE THAT SPECIFIC WORD IN ENGLISH (e.g., "ລະບົບ AI ຕັດຕໍ່", "ອັບລົງ TikTok", "ຢ່າລືມກົດ Like ແລະ Subscribe").
-   - DO NOT force-transliterate well-known English words into awkward phonetic symbols if English spelling is natural!
-3. ${intervalInstruction}
-4. Word tokens: Split each subtitle segment into words in the "words" array: [{"text": "word1"}, {"text": "word2"}].
+LANGUAGE: The selected language is a listening hint, not a translation target. Write every spoken language in its original script.
+${intervalInstruction}
+TIMING: Set each start and end time from speech heard in this audio chunk. Times are relative to the chunk and must not exceed its duration (${params.videoDuration || 30} seconds).
+WORD TOKENS: Split each subtitle segment into words in the "words" array and include each word's own audio-aligned startSec and endSec (relative to this chunk): [{"text": "word1", "startSec": 0.1, "endSec": 0.4}].
 
 Output format: Return strictly a valid JSON array of objects:
 [
   {
     "id": "1",
     "time": 0.0,
-    "endTime": ${is30sInterval ? '30.0' : '2.8'},
+    "endTime": ${Math.min(is30sInterval ? 30 : 2.8, params.videoDuration || 30).toFixed(1)},
     "text": "spoken words here",
-    "words": [{"text": "spoken"}, {"text": "words"}, {"text": "here"}]
+    "words": [{"text": "spoken", "startSec": 0.0, "endSec": 0.5}, {"text": "words", "startSec": 0.5, "endSec": 1.0}, {"text": "here", "startSec": 1.0, "endSec": 1.4}]
   }
 ]
 Output ONLY raw JSON, with no markdown code blocks, backticks, or commentary.`;
 
-  // Select internal backend model based on user's chosen engine tier
-  let modelsToTry: string[] = [];
-  if (version === 'v3') {
-    modelsToTry = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.5-flash-lite'];
-  } else if (version === 'v2') {
-    modelsToTry = ['gemini-flash-latest', 'gemini-3.5-flash-lite', 'gemini-flash-lite-latest'];
-  } else {
-    // v1 - Fast Standard
-    modelsToTry = ['gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-flash-latest'];
-  }
+  // Use explicit, current model IDs.  Avoid the moving `*-latest` aliases so
+  // customers receive the model promised by their plan.
+  const modelProfile = AI_ENGINE_MODELS[version];
+  const modelsToTry = [modelProfile.primary, ...modelProfile.fallbacks];
 
   let lastError: any = null;
 
@@ -100,10 +165,13 @@ Output ONLY raw JSON, with no markdown code blocks, backticks, or commentary.`;
     for (const model of modelsToTry) {
       try {
         const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey,
+            },
             body: JSON.stringify({
               contents: [
                 {
@@ -118,10 +186,7 @@ Output ONLY raw JSON, with no markdown code blocks, backticks, or commentary.`;
                   ],
                 },
               ],
-              generationConfig: {
-                responseMimeType: 'application/json',
-                temperature: 0.1,
-              },
+              generationConfig: getGenerationConfig(model, 0.1),
             }),
           }
         );
@@ -129,6 +194,9 @@ Output ONLY raw JSON, with no markdown code blocks, backticks, or commentary.`;
         if (!res.ok) {
           const errText = await res.text();
           console.warn(`Model ${model} returned ${res.status}:`, errText);
+          if (res.status === 401 || res.status === 403) {
+            lastError = new Error('Gemini API ປະຕິເສດ API key: ກວດ GEMINI_API_KEY ໃນ .env.local ແລະໃຊ້ key ຈາກ Google AI Studio');
+          }
           continue;
         }
 
@@ -145,7 +213,7 @@ Output ONLY raw JSON, with no markdown code blocks, backticks, or commentary.`;
           console.warn(`Model ${model} returned invalid JSON:`, resText.slice(0, 150));
           continue;
         }
-        const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        const rawText = getModelResponseText(data);
 
         if (rawText) {
           const cleaned = rawText
@@ -163,6 +231,8 @@ Output ONLY raw JSON, with no markdown code blocks, backticks, or commentary.`;
               words: Array.isArray(item.words)
                 ? item.words.map((w: any) => ({
                     text: typeof w === 'string' ? w : w.text || '',
+                    ...(typeof w === 'object' && Number.isFinite(Number(w.startSec)) ? { startSec: Number(w.startSec) } : {}),
+                    ...(typeof w === 'object' && Number.isFinite(Number(w.endSec)) ? { endSec: Number(w.endSec) } : {}),
                   }))
                 : String(item.text || '')
                     .split(/\s+/)
@@ -177,8 +247,10 @@ Output ONLY raw JSON, with no markdown code blocks, backticks, or commentary.`;
     }
   }
 
-  // If real audio was not provided or STT network failed, generate contextual subtitles
-  return generateSmartFallbackSubtitles(params);
+  if (!params.audioBase64 || params.audioBase64.length <= 50) {
+    throw new Error('ບໍ່ພົບສຽງຈິງສຳລັບຖອດສຽງ');
+  }
+  throw new Error(lastError instanceof Error ? lastError.message : 'ເຊື່ອມຕໍ່ AI ຖອດສຽງບໍ່ສຳເລັດ ກະລຸນາລອງໃໝ່');
 }
 
 // Backward-compatible alias
@@ -293,12 +365,24 @@ Keep technical words like AI, CapCut, TikTok, Video, Online, Subscribe in Englis
 Output strictly a JSON array matching the input structure:
 [{"id": "1", "time": 0, "endTime": 2.5, "text": "translated text"}]`;
 
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`,
-      {
+  if (!apiKey) {
+    throw new Error('ຍັງບໍ່ໄດ້ຕັ້ງ GEMINI_API_KEY ໃນ .env.local');
+  }
+
+  const version = params.aiVersion || 'v1';
+  const modelProfile = AI_ENGINE_MODELS[version];
+  let lastError: Error | null = null;
+
+  for (const model of [modelProfile.primary, ...modelProfile.fallbacks]) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
         body: JSON.stringify({
           contents: [
             {
@@ -316,42 +400,49 @@ Output strictly a JSON array matching the input structure:
               ],
             },
           ],
-          generationConfig: {
-            responseMimeType: 'application/json',
-            temperature: 0.2,
-          },
+          generationConfig: getGenerationConfig(model, 0.2),
         }),
-      }
-    );
-
-    if (res.ok) {
-      const resText = await res.text();
-      let data: any = {};
-      try {
-        data = resText ? JSON.parse(resText) : {};
-      } catch {
-        data = {};
-      }
-      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (rawText) {
-        const cleaned = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-        const parsed = JSON.parse(cleaned);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return params.subtitles.map((orig, i) => {
-            const tr = parsed[i];
-            const translatedText = tr?.text || orig.text;
-            return {
-              ...orig,
-              text: translatedText,
-              words: translatedText.split(/\s+/).map((w: string) => ({ text: w })),
-            };
-          });
         }
+      );
+
+      if (!res.ok) {
+        const providerMessage = await res.text().catch(() => '');
+        lastError = new Error(providerMessage || `Translation service error (${res.status})`);
+        console.warn(`Translation model ${model} returned ${res.status}`);
+        continue;
       }
+
+      const resText = await res.text();
+      const data = resText ? JSON.parse(resText) : {};
+      const rawText = getModelResponseText(data);
+      if (!rawText) {
+        lastError = new Error('Translation service returned an empty result');
+        continue;
+      }
+
+      const cleaned = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleaned);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        if (parsed.length !== params.subtitles.length || parsed.some((item: any) => typeof item?.text !== 'string' || !item.text.trim())) {
+          lastError = new Error('Translation service returned incomplete subtitles');
+          continue;
+        }
+        return params.subtitles.map((orig, i) => {
+          const tr = parsed[i];
+          const translatedText = tr.text;
+          return {
+            ...orig,
+            text: translatedText,
+            words: translatedText.split(/\s+/).map((w: string) => ({ text: w })),
+          };
+        });
+      }
+      lastError = new Error('Translation service returned an invalid result');
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error('Translation failed');
+      console.warn(`Translation model ${model} failed:`, lastError.message);
     }
-  } catch (err) {
-    console.error('Translation error:', err);
   }
 
-  return params.subtitles;
+  throw lastError || new Error('Translation failed');
 }

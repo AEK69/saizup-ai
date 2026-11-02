@@ -101,17 +101,28 @@ function getAudioContext(): AudioContext | null {
   return audioCtx;
 }
 
+export interface SoundEffectMixDestination {
+  context: AudioContext;
+  destination: MediaStreamAudioDestinationNode;
+}
+
+export function createSoundEffectMixDestination(): SoundEffectMixDestination | null {
+  const context = getAudioContext();
+  if (!context) return null;
+  return { context, destination: context.createMediaStreamDestination() };
+}
+
 /**
  * Synthesizes and plays essential sound effects using Web Audio API
  */
-export function playSoundEffect(effectId: string, volume: number = 0.8) {
+export function playSoundEffect(effectId: string, volume: number = 0.8, output?: AudioNode) {
   const ctx = getAudioContext();
   if (!ctx) return;
 
   const now = ctx.currentTime;
   const masterGain = ctx.createGain();
   masterGain.gain.setValueAtTime(volume, now);
-  masterGain.connect(ctx.destination);
+  masterGain.connect(output || ctx.destination);
 
   switch (effectId) {
     case 'sfx_whoosh': {

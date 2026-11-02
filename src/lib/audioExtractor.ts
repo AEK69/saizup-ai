@@ -1,24 +1,30 @@
 /**
  * Audio Extractor Utility for SAIZUP AI
- * Extracts mono 16kHz PCM WAV audio directly from an uploaded video file (MP4, WebM, MOV)
+ * Extracts mono 12kHz PCM WAV audio directly from an uploaded video file (MP4, WebM, MOV)
  * in the user's browser using Web Audio API / OfflineAudioContext.
  */
 
-export interface ExtractedAudioResult {
+export interface ExtractedAudioChunk {
   base64: string;
   mimeType: string;
   duration: number;
+  offsetSeconds: number;
   sampleRate: number;
   hasAudio: boolean;
 }
 
+export type ExtractedAudioResult = Omit<ExtractedAudioChunk, 'offsetSeconds'>;
+
 /**
- * Extracts a compact, high-clarity 16kHz mono WAV from a video file
+ * Extracts the complete audio track in small WAV chunks so long clips stay
+ * below the per-request AI payload limit and receive accurate time offsets.
  */
-export async function extractAudioFromVideoFile(
+export async function extractAudioChunksFromVideoFile(
   videoFile: File,
-  maxDurationSeconds = 60
-): Promise<ExtractedAudioResult> {
+  chunkDurationSeconds = 30,
+  maxDurationSeconds = Number.POSITIVE_INFINITY,
+  onProgress?: (completedChunks: number, totalChunks: number) => void
+): Promise<ExtractedAudioChunk[]> {
   try {
     // 1. Read file as ArrayBuffer
     const arrayBuffer = await videoFile.arrayBuffer();
@@ -27,13 +33,7 @@ export async function extractAudioFromVideoFile(
     const AudioCtx =
       window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) {
-      return {
-        base64: '',
-        mimeType: 'audio/wav',
-        duration: 15,
-        sampleRate: 12000,
-        hasAudio: true,
-      };
+      throw new Error('ບຣາວເຊີນີ້ບໍ່ຮອງຮັບການອ່ານສຽງຈາກໄຟລ໌');
     }
 
     const audioCtx = new AudioCtx();
@@ -42,13 +42,7 @@ export async function extractAudioFromVideoFile(
     try {
       decodedAudio = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
     } catch {
-      return {
-        base64: '',
-        mimeType: 'audio/wav',
-        duration: 15,
-        sampleRate: 12000,
-        hasAudio: true,
-      };
+      throw new Error('ອ່ານແທຣັກສຽງຈາກວິດີໂອບໍ່ໄດ້ ກະລຸນາໃຊ້ MP4 ຫຼື WAV');
     } finally {
       if (audioCtx.state !== 'closed') {
         audioCtx.close();
@@ -56,60 +50,70 @@ export async function extractAudioFromVideoFile(
     }
 
     const duration = Math.min(decodedAudio.duration, maxDurationSeconds);
-    if (duration <= 0) {
-      return {
-        base64: '',
-        mimeType: 'audio/wav',
-        duration: 15,
-        sampleRate: 12000,
-        hasAudio: true,
-      };
+    if (!Number.isFinite(duration) || duration <= 0) {
+      throw new Error('ບໍ່ພົບສຽງໃນໄຟລ໌ວິດີໂອ');
     }
 
     const targetSampleRate = 12000;
-    const numSamples = Math.ceil(targetSampleRate * duration);
+    const chunks: ExtractedAudioChunk[] = [];
+    const totalChunks = Math.ceil(duration / chunkDurationSeconds);
+    onProgress?.(0, totalChunks);
+    for (let offsetSeconds = 0; offsetSeconds < duration; offsetSeconds += chunkDurationSeconds) {
+      const chunkDuration = Math.min(chunkDurationSeconds, duration - offsetSeconds);
+      const numSamples = Math.ceil(targetSampleRate * chunkDuration);
+      const offlineCtx = new OfflineAudioContext(1, numSamples, targetSampleRate);
+      const source = offlineCtx.createBufferSource();
+      source.buffer = decodedAudio;
+      source.connect(offlineCtx.destination);
+      source.start(0, offsetSeconds, chunkDuration);
 
-  // 3. Resample and mixdown to mono 16kHz using OfflineAudioContext
-  const offlineCtx = new OfflineAudioContext(1, numSamples, targetSampleRate);
-  const source = offlineCtx.createBufferSource();
-  source.buffer = decodedAudio;
-  source.connect(offlineCtx.destination);
-  source.start(0);
+      const renderedBuffer = await offlineCtx.startRendering();
+      const channelData = renderedBuffer.getChannelData(0);
+      let maxAmplitude = 0;
+      for (let i = 0; i < channelData.length; i += 100) {
+        maxAmplitude = Math.max(maxAmplitude, Math.abs(channelData[i]));
+      }
 
-  const renderedBuffer = await offlineCtx.startRendering();
-  const channelData = renderedBuffer.getChannelData(0);
+      chunks.push({
+        base64: arrayBufferToBase64(encodePCM16Wav(channelData, targetSampleRate)),
+        mimeType: 'audio/wav',
+        duration: chunkDuration,
+        offsetSeconds,
+        sampleRate: targetSampleRate,
+        hasAudio: maxAmplitude > 0.005,
+      });
+      onProgress?.(chunks.length, totalChunks);
+    }
 
-  // Check if audio has sound (not completely silent zero amplitude)
-  let maxAmplitude = 0;
-  for (let i = 0; i < channelData.length; i += 100) {
-    const val = Math.abs(channelData[i]);
-    if (val > maxAmplitude) maxAmplitude = val;
-  }
-  const hasAudio = maxAmplitude > 0.005;
+    if (!chunks.some((chunk) => chunk.hasAudio)) {
+      throw new Error('ວິດີໂອນີ້ບໍ່ມີສຽງ ຫຼື ສຽງເບົາເກີນໄປ');
+    }
 
-  // 4. Encode to 16-bit PCM WAV
-  const wavArrayBuffer = encodePCM16Wav(channelData, targetSampleRate);
-
-  // 5. Convert ArrayBuffer to Base64 in safe chunks
-  const base64 = arrayBufferToBase64(wavArrayBuffer);
-
-    return {
-      base64,
-      mimeType: 'audio/wav',
-      duration,
-      sampleRate: targetSampleRate,
-      hasAudio,
-    };
+    return chunks;
   } catch (err) {
-    console.warn('Audio extraction error, fallback:', err);
-    return {
-      base64: '',
-      mimeType: 'audio/wav',
-      duration: 15,
-      sampleRate: 12000,
-      hasAudio: true,
-    };
+    console.warn('Audio extraction failed:', err);
+    throw err instanceof Error ? err : new Error('ສະກັດສຽງຈາກວິດີໂອບໍ່ສຳເລັດ');
   }
+}
+
+/** Backwards-compatible short-clip extractor used by the video editor. */
+export async function extractAudioFromVideoFile(
+  videoFile: File,
+  maxDurationSeconds = 60
+): Promise<ExtractedAudioResult> {
+  const [firstChunk] = await extractAudioChunksFromVideoFile(
+    videoFile,
+    maxDurationSeconds,
+    maxDurationSeconds
+  );
+  if (!firstChunk) throw new Error('ບໍ່ພົບສຽງໃນໄຟລ໌ວິດີໂອ');
+  return {
+    base64: firstChunk.base64,
+    mimeType: firstChunk.mimeType,
+    duration: firstChunk.duration,
+    sampleRate: firstChunk.sampleRate,
+    hasAudio: firstChunk.hasAudio,
+  };
 }
 
 /**

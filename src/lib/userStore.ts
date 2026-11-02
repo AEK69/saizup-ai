@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import type { AiEngineVersion } from './gemini';
 
 export type SubscriptionTier = 'Free' | 'Gold' | 'Plus' | 'Pro' | 'Owner';
 
@@ -37,32 +38,32 @@ export const TIER_CONFIG = {
     name: 'Free Tier (ທົດລອງຟຣີ)',
     dailyCredits: 15,
     maxClipDurationSec: 30, // 30 seconds maximum
-    allowedAiVersions: ['v1'],
-    features: ['15 ເຄຣດິດ/ມື້ (ຣີເຊັດທຸກວັນ)', 'ຄລິບຍາວສູງສຸດ 30 ວິນາທີ', 'AI Version 1 (Standard Fast)', 'ຊັບໄຕເຕິລ 30 ວິ', 'ລາຍນ້ຳ SAIZUP'],
+    allowedAiVersions: ['v1'] as AiEngineVersion[],
+    features: ['15 ເຄຣດິດ/ມື້ (ຣີເຊັດທຸກວັນ)', 'ຄລິບຍາວສູງສຸດ 30 ວິນາທີ', 'Gemini 3.5 Flash-Lite', 'ຊັບໄຕເຕິລ 30 ວິ', 'ລາຍນ້ຳ SAIZUP'],
     priceLAK: 0,
   },
   Gold: {
     name: 'Gold Tier (Starter Creator)',
     monthlyCredits: 250,
     maxClipDurationSec: 180, // 3 minutes
-    allowedAiVersions: ['v1', 'v2'],
-    features: ['250 ເຄຣດິດ/ເດືອນ', 'ຄລິບຍາວສູງສຸດ 3 ນາທີ (180s)', 'AI Version 1 & 2 (Balanced Pro)', 'ບໍ່ມີລາຍນ້ຳ', 'ສົ່ງອອກ 1080p Full HD'],
+    allowedAiVersions: ['v1', 'v2'] as AiEngineVersion[],
+    features: ['250 ເຄຣດິດ/ເດືອນ', 'ຄລິບຍາວສູງສຸດ 3 ນາທີ (180s)', 'Gemini 3.8 Flash', 'ບໍ່ມີລາຍນ້ຳ', 'ສົ່ງອອກ 1080p Full HD'],
     priceLAK: 99000,
   },
   Plus: {
     name: 'Plus Tier (Pro Creator)',
     monthlyCredits: 800,
     maxClipDurationSec: 600, // 10 minutes
-    allowedAiVersions: ['v1', 'v2', 'v3'],
-    features: ['800 ເຄຣດິດ/ເດືອນ', 'ຄລິບຍາວສູງສຸດ 10 ນາທີ (600s)', 'AI Version 1, 2 & 3 (Ultra Precision)', 'ຄັງສຽງເອັບເຟັກ Sound Effects ຄົບຊຸດ', 'Karaoke Millisecond Sync'],
+    allowedAiVersions: ['v1', 'v2', 'v3'] as AiEngineVersion[],
+    features: ['800 ເຄຣດິດ/ເດືອນ', 'ຄລິບຍາວສູງສຸດ 10 ນາທີ (600s)', 'Gemini 3.1 Pro', 'ຄັງສຽງເອັບເຟັກ Sound Effects ຄົບຊຸດ', 'Karaoke Millisecond Sync'],
     priceLAK: 199000,
   },
   Pro: {
     name: 'Pro Tier (Studio VIP)',
     monthlyCredits: 2500,
     maxClipDurationSec: 999999, // Unlimited
-    allowedAiVersions: ['v1', 'v2', 'v3'],
-    features: ['2,500 ເຄຣດິດ/ເດືອນ (3,500 ລາຍປີ)', 'ບໍ່ຈຳກັດຄວາມຍາວວິດີໂອ (Unlimited)', 'AI Version 3 Ultra VIP Priority', 'ສົ່ງອອກ 4K Ultra HD', 'ຊ່ວຍເຫຼືອ VIP 24/7'],
+    allowedAiVersions: ['v1', 'v2', 'v3', 'v4'] as AiEngineVersion[],
+    features: ['2,500 ເຄຣດິດ/ເດືອນ (3,500 ລາຍປີ)', 'ບໍ່ຈຳກັດຄວາມຍາວວິດີໂອ (Unlimited)', 'Gemini 4 Argon Priority', 'ສົ່ງອອກ 4K Ultra HD', 'ຊ່ວຍເຫຼືອ VIP 24/7'],
     priceLAK: 499000,
     yearlyPriceLAK: 1999000,
   },
@@ -70,14 +71,14 @@ export const TIER_CONFIG = {
     name: 'Store Owner (ເຈົ້າຂອງລະບົບ)',
     monthlyCredits: 99999,
     maxClipDurationSec: 999999,
-    allowedAiVersions: ['v1', 'v2', 'v3'],
+    allowedAiVersions: ['v1', 'v2', 'v3', 'v4'] as AiEngineVersion[],
     features: ['ເຄຣດິດບໍ່ຈຳກັດ (Unlimited)', 'ເຂົ້າເຖິງລະບົບຫຼັງບ້ານ (Admin Backoffice)', 'ຄວບຄຸມຈັດການຜູ້ໃຊ້ທັງໝົດ'],
     priceLAK: 0,
   },
 };
 
 export interface DynamicCostParams {
-  aiVersion: 'v1' | 'v2' | 'v3';
+  aiVersion: AiEngineVersion;
   durationSeconds?: number;
   language?: 'lo' | 'th' | 'en' | 'mixed';
   hasTranslation?: boolean;
@@ -85,7 +86,7 @@ export interface DynamicCostParams {
 
 /**
  * Dynamic credit calculation based on AI model, video duration, and language complexity.
- * Base: v1=5, v2=10, v3=20
+ * Base: v1=5, v2=12, v3=35, v4=80
  * Duration: +1 credit per 15s above 30s
  * Complexity: +2 credits for code-switching or bilingual translation
  */
@@ -115,24 +116,31 @@ export function calculateDynamicCreditsCost(params: DynamicCostParams): {
 export const AI_COST_CONFIG = {
   v1: {
     id: 'v1',
-    name: 'AI Version 1 (Standard Fast Engine)',
+    name: 'Gemini 3.5 Flash-Lite',
     creditsCost: 5,
-    description: 'ຖອດສຽງໄວມາດຕະຖານ ສຳລັບຄລິບສັ້ນທົ່ວໄປ',
+    description: 'ຮຸ່ນປະຢັດສຳລັບແພັກເກດ Free',
     tierRequired: 'Free',
   },
   v2: {
     id: 'v2',
-    name: 'AI Version 2 (Balanced Pro Engine)',
-    creditsCost: 10,
-    description: 'ວິເຄາະສຳນຽງລາວ-ໄທ-ອັງກິດ ປົນກັນໄດ້ຢ່າງລຽບນຽນ',
+    name: 'Gemini 3.8 Flash',
+    creditsCost: 12,
+    description: 'ໄວ ແລະ ແມ່ນຍຳຂຶ້ນ ສຳລັບ Gold',
     tierRequired: 'Gold',
   },
   v3: {
     id: 'v3',
-    name: 'AI Version 3 (Ultra Precision Engine)',
-    creditsCost: 20,
-    description: 'ຄວາມຊັດເຈນສູງສຸດລະດັບມິລລິວິນາທີ ສຳລັບຄາຣາໂອເກະມືອາຊີບ',
+    name: 'Gemini 3.1 Pro',
+    creditsCost: 35,
+    description: 'ແປ ແລະ ຮັກສາບໍລິບົດຂ້າມພາສາສຳລັບ Plus',
     tierRequired: 'Plus',
+  },
+  v4: {
+    id: 'v4',
+    name: 'Gemini 4 Argon',
+    creditsCost: 80,
+    description: 'ຮຸ່ນ flagship ສຳລັບ Pro ເມື່ອຕ້ອງການການວິເຄາະສູງສຸດ',
+    tierRequired: 'Pro',
   },
 };
 
@@ -405,8 +413,9 @@ export const UserStore = {
   // Deduct credits for AI usage (Supports dynamic calculation or fixed cost)
   deductCredits(
     email: string,
-    costOrParams: 'v1' | 'v2' | 'v3' | DynamicCostParams | number = 'v1',
-    taskDetail: string = 'ສ້າງຊັບໄຕເຕິລ AI'
+    costOrParams: AiEngineVersion | DynamicCostParams | number = 'v1',
+    taskDetail: string = 'ສ້າງຊັບໄຕເຕິລ AI',
+    usageType: 'video' | 'translation' = 'video'
   ): { success: boolean; remainingCredits: number; costDeducted: number; error?: string } {
     const users = ensureStorage();
     const cleanEmail = email.toLowerCase().trim();
@@ -447,7 +456,7 @@ export const UserStore = {
 
     user.credits = Math.max(0, user.credits - cost);
     user.dailyCreditsUsed = (user.dailyCreditsUsed || 0) + cost;
-    user.totalVideosGenerated = (user.totalVideosGenerated || 0) + 1;
+    if (usageType === 'video') user.totalVideosGenerated = (user.totalVideosGenerated || 0) + 1;
 
     user.activityHistory = [
       {

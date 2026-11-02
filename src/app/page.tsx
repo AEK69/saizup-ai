@@ -6,9 +6,11 @@ import Features from "@/components/landing/Features";
 import Pricing from "@/components/landing/Pricing";
 import FAQ from "@/components/landing/FAQ";
 import Footer from "@/components/landing/Footer";
+import { LandingLanguageProvider } from "@/components/landing/LanguageContext";
 
 export default function Home() {
   return (
+    <LandingLanguageProvider>
     <main className="min-h-screen bg-[#07080d] text-white selection:bg-purple-600 selection:text-white">
       {/* Global Navigation */}
       <Navbar />
@@ -28,5 +30,6 @@ export default function Home() {
       {/* Footer */}
       <Footer />
     </main>
+    </LandingLanguageProvider>
   );
 }

@@ -1,13 +1,11 @@
 // BCEL One / Jvixcloud Payment Gateway Service
-// Integrated with key: jvixcloud_live_e50047095b0a768aa2df96822d529a865457428738949921
 
 import { PaymentTransaction, PlanType } from '@/types';
 import { generateLaoQrPayload } from './laoqr';
 
 export const BCEL_ONE_KEY =
   process.env.BCEL_ONE_KEY ||
-  process.env.NEXT_PUBLIC_BCEL_ONE_KEY ||
-  'jvixcloud_live_e50047095b0a768aa2df96822d529a865457428738949921';
+  '';
 
 export interface CreateBcelInvoiceParams {
   planId: PlanType;
@@ -47,7 +45,8 @@ export async function createBcelInvoice(params: CreateBcelInvoiceParams): Promis
     creditsGiven: params.credits,
     status: 'pending',
     paymentMethod: 'BCEL_ONE',
-    bcelKey: BCEL_ONE_KEY,
+    // Never return a gateway secret to the browser or persistence layer.
+    bcelKey: BCEL_ONE_KEY ? 'server-configured' : 'not-configured',
     qrPayload,
     createdAt: new Date().toISOString(),
   };

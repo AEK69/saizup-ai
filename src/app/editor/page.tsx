@@ -38,6 +38,7 @@ import {
   Bookmark,
   Sliders,
   ChevronDown,
+  ChevronUp,
   ChevronLeft,
   ChevronRight,
   Layers,
@@ -115,6 +116,29 @@ export interface VideoTrackClip {
   duration: number;
   inPoint: number;
   outPoint: number;
+}
+
+interface MyInstantsSound {
+  name: string;
+  slug: string;
+  sound: string;
+  description: string;
+  tags: string[];
+}
+
+interface SoundEffectTrackClip {
+  id: string;
+  name: string;
+  audioUrl?: string;
+  assetId?: string;
+  sourcePage?: string;
+  startTime: number;
+  duration: number;
+  volume: number;
+  fadeInSec?: number;
+  fadeOutSec?: number;
+  kind: "uploaded" | "myinstants" | "synthetic";
+  effectId?: string;
 }
 
 export interface KeyframeItem {
@@ -314,9 +338,9 @@ const CAPCUT_PRESET_STYLES = [
 
 export default function EditorPage() {
   // Navigation tabs (CapCut style: Media, Captions, Audio only - Resource Library)
-  const [activeLeftTab, setActiveLeftTab] = useState<"media" | "captions" | "audio">("captions");
+  const [activeLeftTab, setActiveLeftTab] = useState<"media" | "captions" | "audio">("media");
 
-  const [editorAiVersion, setEditorAiVersion] = useState<"v1" | "v2" | "v3">("v1");
+  const [editorAiVersion, setEditorAiVersion] = useState<"v1" | "v2" | "v3" | "v4">("v1");
   const [editorIntervalMode, setEditorIntervalMode] = useState<"sentence" | "30s">("sentence");
 
   // Contextual Property Inspector Mode (Text, Keyframe, Video, Audio)
@@ -330,6 +354,57 @@ export default function EditorPage() {
     { id: string; name: string; type: "sfx" | "bgm" | "video"; dataUrl?: string; icon?: string }[]
   >([]);
   const customAssetInputRef = useRef<HTMLInputElement | null>(null);
+  const [soundEffectClips, setSoundEffectClips] = useState<SoundEffectTrackClip[]>([]);
+  const [selectedSoundEffectClipId, setSelectedSoundEffectClipId] = useState<string | null>(null);
+  const [myInstantsQuery, setMyInstantsQuery] = useState("sound effects");
+  const [myInstantsSearchTerm, setMyInstantsSearchTerm] = useState("sound effects");
+  const [myInstantsPage, setMyInstantsPage] = useState(5);
+  const [myInstantsSounds, setMyInstantsSounds] = useState<MyInstantsSound[]>([]);
+  const [myInstantsFavorites, setMyInstantsFavorites] = useState<MyInstantsSound[]>([]);
+  const [showMyInstantsFavorites, setShowMyInstantsFavorites] = useState(false);
+  const [myInstantsLoading, setMyInstantsLoading] = useState(false);
+  const [myInstantsError, setMyInstantsError] = useState("");
+  const [myInstantsHasNext, setMyInstantsHasNext] = useState(false);
+  const [myInstantsRefreshKey, setMyInstantsRefreshKey] = useState(0);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const timelineAudioRefs = useRef<Record<string, HTMLAudioElement | null>>({});
+  const playedSyntheticSoundsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("saizup_myinstants_favorites");
+      if (saved) setMyInstantsFavorites(JSON.parse(saved));
+    } catch (error) {
+      console.warn("Failed to load MyInstants favorites:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeLeftTab !== "audio") return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setMyInstantsLoading(true);
+      setMyInstantsError("");
+      try {
+        const params = new URLSearchParams({ q: myInstantsSearchTerm, page: String(myInstantsPage) });
+        const response = await fetch(`/api/sounds/myinstants?${params}`, { signal: controller.signal });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Could not load sounds.");
+        setMyInstantsSounds(Array.isArray(data.results) ? data.results : []);
+        setMyInstantsHasNext(Boolean(data.next));
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setMyInstantsError(error instanceof Error ? error.message : "Could not load sounds from MyInstants.");
+        setMyInstantsSounds([]);
+      } finally {
+        if (!controller.signal.aborted) setMyInstantsLoading(false);
+      }
+    }, 450);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [activeLeftTab, myInstantsSearchTerm, myInstantsPage, myInstantsRefreshKey]);
 
   // Load custom assets from localStorage on mount
   useEffect(() => {
@@ -345,33 +420,17 @@ export default function EditorPage() {
 
   const handleUploadCustomAsset = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const isBgm = file.name.toLowerCase().includes("bgm") || file.name.toLowerCase().includes("music");
-      const newAsset = {
-        id: `asset-${Date.now()}`,
-        name: file.name.replace(/\.[^/.]+$/, ""),
-        type: isBgm ? ("bgm" as const) : ("sfx" as const),
-        dataUrl: reader.result as string,
-        icon: isBgm ? "🎵" : "🔊",
-      };
-      const updated = [newAsset, ...customAssets];
-      setCustomAssets(updated);
-      try {
-        localStorage.setItem("saizup_custom_assets", JSON.stringify(updated.slice(0, 30)));
-      } catch (err) {
-        console.warn("Failed to persist custom asset:", err);
-      }
-      showToast(`✅ ເພີ່ມ "${newAsset.name}" ເຂົ້າ My Assets ແລ້ວ!`);
-    };
-    reader.readAsDataURL(file);
+    if (file) addCustomAudioFile(file, currentTime, false);
+    e.target.value = "";
   };
 
   const handleDeleteCustomAsset = (id: string) => {
     const updated = customAssets.filter((a) => a.id !== id);
     setCustomAssets(updated);
+    setSoundEffectClips((previous) => previous.filter((clip) => clip.assetId !== id));
+    if (soundEffectClips.some((clip) => clip.assetId === id && clip.id === selectedSoundEffectClipId)) {
+      setSelectedSoundEffectClipId(null);
+    }
     try {
       localStorage.setItem("saizup_custom_assets", JSON.stringify(updated));
     } catch {}
@@ -381,8 +440,10 @@ export default function EditorPage() {
   const playCustomAudio = (dataUrl?: string) => {
     if (!dataUrl) return;
     try {
+      previewAudioRef.current?.pause();
       const audio = new window.Audio(dataUrl);
-      audio.play();
+      previewAudioRef.current = audio;
+      void audio.play();
     } catch (err) {
       console.warn("Play error:", err);
     }
@@ -707,7 +768,110 @@ export default function EditorPage() {
   const [duration, setDuration] = useState(15.0);
   const [playbackRate, setPlaybackRate] = useState(1.0);
   const [isMuted, setIsMuted] = useState(false);
+  const [soundTrackVolume, setSoundTrackVolume] = useState(0.8);
   const [activeWordIndex, setActiveWordIndex] = useState(1);
+
+  const addSoundClip = (
+    sound: { name: string; audioUrl?: string; assetId?: string; sourcePage?: string; duration?: number; kind: SoundEffectTrackClip["kind"]; effectId?: string },
+    startTime = currentTime,
+  ) => {
+    const clip: SoundEffectTrackClip = {
+      id: "sound-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7),
+      name: sound.name,
+      audioUrl: sound.audioUrl,
+      assetId: sound.assetId,
+      sourcePage: sound.sourcePage,
+      startTime: Math.max(0, Math.min(startTime, duration || 15)),
+      duration: Math.max(0.15, sound.duration || 4),
+      volume: 0.8,
+      fadeInSec: 0,
+      fadeOutSec: 0,
+      kind: sound.kind,
+      effectId: sound.effectId,
+    };
+    setSoundEffectClips((previous) => [...previous, clip]);
+    setSelectedSoundEffectClipId(clip.id);
+    setInspectorMode("audio");
+    showToast("ເພີ່ມ \"" + clip.name + "\" ໃສ່ແທຣັກສຽງທີ່ " + formatTime(clip.startTime) + " ແລ້ວ");
+    return clip;
+  };
+
+  const addMyInstantsSound = (sound: MyInstantsSound, startTime = currentTime) => {
+    addSoundClip({
+      name: sound.name,
+      audioUrl: sound.sound,
+      sourcePage: "https://www.myinstants.com/en/instant/" + encodeURIComponent(sound.slug) + "/",
+      kind: "myinstants",
+    }, startTime);
+  };
+
+  const addCustomAudioFile = (file: File, startTime = currentTime, placeOnTimeline = true) => {
+    if (!file.type.startsWith("audio/") && !/\.(mp3|wav|ogg|m4a|aac|flac|webm)$/i.test(file.name)) {
+      showToast("ກະລຸນາເລືອກໄຟລ໌ສຽງ MP3, WAV, OGG ຫຼື M4A");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const isBgm = /bgm|music/i.test(file.name);
+      const asset = {
+        id: "asset-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6),
+        name: file.name.replace(/\.[^/.]+$/, ""),
+        type: isBgm ? ("bgm" as const) : ("sfx" as const),
+        dataUrl,
+        icon: isBgm ? "🎵" : "🔊",
+      };
+      setCustomAssets((previous) => {
+        const updated = [asset, ...previous].slice(0, 30);
+        try {
+          localStorage.setItem("saizup_custom_assets", JSON.stringify(updated));
+        } catch (error) {
+          console.warn("Failed to persist custom audio:", error);
+          showToast("ໄຟລ໌ໃຫຍ່ເກີນພື້ນທີ່ Browser ສຳລັບບັນທຶກ — ຍັງນຳໃຊ້ໃນໂປຣເຈັກນີ້ໄດ້");
+        }
+        return updated;
+      });
+      const audio = new Audio(dataUrl);
+      const clip = placeOnTimeline ? addSoundClip({ name: asset.name, assetId: asset.id, kind: "uploaded" }, startTime) : null;
+      if (clip) {
+        audio.onloadedmetadata = () => {
+          if (Number.isFinite(audio.duration) && audio.duration > 0) {
+            setSoundEffectClips((previous) => previous.map((item) => item.id === clip.id ? { ...item, duration: audio.duration } : item));
+          }
+        };
+      }
+      if (!placeOnTimeline) {
+        showToast("ອັບໂຫຼດ \"" + asset.name + "\" ແລ້ວ. ລາກໄປ timeline ຫຼືກົດ + ເພື່ອເພີ່ມ");
+      }
+    };
+    reader.onerror = () => showToast("ອ່ານໄຟລ໌ສຽງບໍ່ສຳເລັດ");
+    reader.readAsDataURL(file);
+  };
+
+  const previewMyInstantsSound = (sound: MyInstantsSound) => {
+    if (previewAudioRef.current?.src === sound.sound && !previewAudioRef.current.paused) {
+      previewAudioRef.current.pause();
+      return;
+    }
+    previewAudioRef.current?.pause();
+    const audio = new Audio(sound.sound);
+    audio.preload = "auto";
+    previewAudioRef.current = audio;
+    void audio.play().catch(() => setMyInstantsError("ຟັງຕົວຢ່າງບໍ່ໄດ້. ເປີດໜ້າຕົ້ນສະບັບເພື່ອລອງອີກຄັ້ງ."));
+  };
+
+  const toggleMyInstantsFavorite = (sound: MyInstantsSound) => {
+    setMyInstantsFavorites((previous) => {
+      const exists = previous.some((item) => item.slug === sound.slug);
+      const updated = exists ? previous.filter((item) => item.slug !== sound.slug) : [sound, ...previous];
+      try {
+        localStorage.setItem("saizup_myinstants_favorites", JSON.stringify(updated));
+      } catch (error) {
+        console.warn("Failed to save favorites:", error);
+      }
+      return updated;
+    });
+  };
 
   // Aspect Ratio & Cropping Mode (Horizontal, Vertical, Square, Portrait)
   const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9" | "1:1" | "4:5">("9:16");
@@ -743,9 +907,9 @@ export default function EditorPage() {
   // =========================================================================
   // 1. RESIZABLE PANELS STATE (Widths & Heights adjustable like CapCut Desktop)
   // =========================================================================
-  const [leftPanelWidth, setLeftPanelWidth] = useState(300);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(320);
   const [isLeftCollapsed, setIsLeftCollapsed] = useState(false);
-  const [rightPanelWidth, setRightPanelWidth] = useState(330);
+  const [rightPanelWidth, setRightPanelWidth] = useState(320);
   const [isRightCollapsed, setIsRightCollapsed] = useState(false);
   const [timelineHeight, setTimelineHeight] = useState(240);
   const [isTimelineCollapsed, setIsTimelineCollapsed] = useState(false);
@@ -768,6 +932,7 @@ export default function EditorPage() {
 
   // Keyboard Shortcuts Modal State
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
 
   // AI & Generation States
   const [isGeneratingSubtitles, setIsGeneratingSubtitles] = useState(false);
@@ -853,6 +1018,7 @@ export default function EditorPage() {
           enableStroke,
           strokeColor,
           clipLanguage,
+          soundEffectClips,
           savedAt: new Date().toLocaleTimeString(),
         };
         localStorage.setItem("saizup_capcut_project", JSON.stringify(payload));
@@ -884,6 +1050,7 @@ export default function EditorPage() {
     enableStroke,
     strokeColor,
     clipLanguage,
+    soundEffectClips,
   ]);
 
   // Check if saved draft exists in browser localStorage (do NOT auto-overwrite workspace on open, keep fresh initial default state)
@@ -920,6 +1087,7 @@ export default function EditorPage() {
         enableStroke,
         strokeColor,
         clipLanguage,
+        soundEffectClips,
         savedAt: new Date().toLocaleTimeString(),
       };
       localStorage.setItem("saizup_capcut_project", JSON.stringify(payload));
@@ -1398,6 +1566,8 @@ export default function EditorPage() {
     pushHistorySnapshot("Reset to Default Project");
     setSubtitles([]);
     setVideoTrackClips([]);
+    setSoundEffectClips([]);
+    setSelectedSoundEffectClipId(null);
     setMediaList([]);
     setKeyframes([]);
     setVideoColorFilter({ ...INITIAL_DEFAULT_COLOR_FILTER });
@@ -1448,6 +1618,7 @@ export default function EditorPage() {
         if (typeof p.enableStroke === "boolean") setEnableStroke(p.enableStroke);
         if (p.strokeColor) setStrokeColor(p.strokeColor);
         if (p.clipLanguage) setClipLanguage(p.clipLanguage);
+        if (Array.isArray(p.soundEffectClips)) setSoundEffectClips(p.soundEffectClips);
         if (p.savedAt) setLastSavedTime(p.savedAt);
         showToast("✅ ກູ້ຄືນສະບັບຮ່າງເກົ່າສຳເລັດແລ້ວ!");
       }
@@ -1483,6 +1654,8 @@ export default function EditorPage() {
         duration,
         subtitles,
         videoTrackClips,
+        soundEffectClips,
+        soundAssets: customAssets.filter((asset) => soundEffectClips.some((clip) => clip.assetId === asset.id)),
         mediaList,
         keyframes,
         videoColorFilter,
@@ -1559,6 +1732,24 @@ export default function EditorPage() {
         if (Array.isArray(data.videoTrackClips)) {
           setVideoTrackClips(data.videoTrackClips);
           if (data.videoTrackClips.length > 0) setSelectedVideoClipId(data.videoTrackClips[0].id);
+        }
+
+        if (Array.isArray(data.soundEffectClips)) {
+          setSoundEffectClips(data.soundEffectClips);
+          setSelectedSoundEffectClipId(data.soundEffectClips[0]?.id || null);
+        }
+        if (Array.isArray(data.soundAssets)) {
+          const importedAssets = data.soundAssets.filter((asset: any) => asset?.id && asset?.dataUrl);
+          setCustomAssets((previous) => {
+            const byId = new Map([...importedAssets, ...previous].map((asset: any) => [asset.id, asset]));
+            const merged = Array.from(byId.values()).slice(0, 30) as typeof customAssets;
+            try {
+              localStorage.setItem("saizup_custom_assets", JSON.stringify(merged));
+            } catch (error) {
+              console.warn("Could not store imported audio assets:", error);
+            }
+            return merged;
+          });
         }
 
         if (Array.isArray(data.mediaList)) {
@@ -1771,6 +1962,87 @@ export default function EditorPage() {
       window.removeEventListener("mouseup", handleMouseUp);
     };
   }, [draggingSubAction, duration, enableSnapping, pushHistorySnapshot]);
+
+  useEffect(() => {
+    const isTrackMuted = trackMutes.bgm;
+    soundEffectClips.forEach((clip) => {
+      if (clip.kind === "synthetic" && clip.effectId) {
+        const isInsideClip = currentTime >= clip.startTime && currentTime < clip.startTime + clip.duration;
+        if (!isPlaying) {
+          playedSyntheticSoundsRef.current.delete(clip.id);
+        } else if (isInsideClip && !isTrackMuted && !playedSyntheticSoundsRef.current.has(clip.id)) {
+          playSoundEffect(clip.effectId, clip.volume * soundTrackVolume);
+          playedSyntheticSoundsRef.current.add(clip.id);
+        } else if (!isInsideClip) {
+          playedSyntheticSoundsRef.current.delete(clip.id);
+        }
+        return;
+      }
+
+      const audio = timelineAudioRefs.current[clip.id];
+      if (!audio) return;
+      const clipUrl = clip.audioUrl || customAssets.find((asset) => asset.id === clip.assetId)?.dataUrl;
+      if (clipUrl && audio.src !== clipUrl) audio.src = clipUrl;
+      const isInsideClip = currentTime >= clip.startTime && currentTime < clip.startTime + clip.duration;
+      if (isPlaying && isInsideClip && !isTrackMuted) {
+        const clipOffset = Math.max(0, currentTime - clip.startTime);
+        const fadeInGain = clip.fadeInSec ? Math.min(1, clipOffset / clip.fadeInSec) : 1;
+        const fadeOutGain = clip.fadeOutSec ? Math.min(1, Math.max(0, (clip.duration - clipOffset) / clip.fadeOutSec)) : 1;
+        audio.volume = Math.max(0, Math.min(1, clip.volume * soundTrackVolume * Math.min(fadeInGain, fadeOutGain)));
+        if (Number.isFinite(audio.duration) && Math.abs(audio.currentTime - clipOffset) > 0.35) {
+          audio.currentTime = Math.min(clipOffset, Math.max(0, audio.duration - 0.05));
+        }
+        if (audio.paused) void audio.play().catch(() => undefined);
+      } else {
+        audio.pause();
+        if (currentTime < clip.startTime) audio.currentTime = 0;
+      }
+    });
+  }, [currentTime, isPlaying, soundEffectClips, customAssets, trackMutes.bgm, soundTrackVolume]);
+
+  const handleSoundLaneDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const dropTime = (duration || 15) * ratio;
+
+    const existingClipId = e.dataTransfer.getData("application/x-saizup-audio-clip");
+    if (existingClipId) {
+      setSoundEffectClips((previous) => previous.map((clip) => clip.id === existingClipId ? { ...clip, startTime: dropTime } : clip));
+      setSelectedSoundEffectClipId(existingClipId);
+      setInspectorMode("audio");
+      return;
+    }
+
+    const assetId = e.dataTransfer.getData("application/x-saizup-audio-asset");
+    if (assetId) {
+      const asset = customAssets.find((item) => item.id === assetId);
+      if (asset?.dataUrl) addSoundClip({ name: asset.name, assetId: asset.id, kind: "uploaded" }, dropTime);
+      return;
+    }
+
+    const serializedSound = e.dataTransfer.getData("application/x-saizup-myinstants");
+    if (serializedSound) {
+      try {
+        const sound = JSON.parse(serializedSound) as MyInstantsSound;
+        if (sound.slug && sound.sound && /^https:\/\//.test(sound.sound)) addMyInstantsSound(sound, dropTime);
+      } catch {
+        showToast("ລາກສຽງນີ້ລົງ timeline ບໍ່ສຳເລັດ");
+      }
+      return;
+    }
+
+    const soundEffectId = e.dataTransfer.getData("application/x-saizup-synthetic-sfx");
+    if (soundEffectId) {
+      const effect = ESSENTIAL_SOUND_EFFECTS.find((item) => item.id === soundEffectId);
+      if (effect) addSoundClip({ name: effect.name, duration: effect.durationSec, kind: "synthetic", effectId: effect.id }, dropTime);
+      return;
+    }
+
+    const file = e.dataTransfer.files?.[0];
+    if (file) addCustomAudioFile(file, dropTime);
+  };
 
   // Video Playback Controls
   const togglePlay = useCallback(() => {
@@ -2564,6 +2836,7 @@ export default function EditorPage() {
 
   const totalWords = subtitles.reduce((acc, cur) => acc + cur.words.length, 0);
   const totalBlocks = subtitles.length;
+  const selectedSoundClip = soundEffectClips.find((clip) => clip.id === selectedSoundEffectClipId) || null;
 
   // Apply preset helper
   const applyPreset = (p: (typeof PRESET_LIST)[0]) => {
@@ -2608,9 +2881,9 @@ export default function EditorPage() {
   })();
 
   return (
-    <div className="h-screen max-h-screen w-screen overflow-hidden bg-[#111218] text-slate-100 flex flex-col font-sans select-none">
+    <div className="saizup-editor h-screen max-h-screen w-screen overflow-hidden bg-[#111218] text-slate-100 flex flex-col font-sans select-none">
       {/* 1. TOP HEADER (CapCut Desktop Header with Home Button & LocalStorage Status) */}
-      <header className="h-11 px-3 bg-[#181920] border-b border-[#262833] flex items-center justify-between z-30 flex-shrink-0">
+      <header className="h-14 px-3 sm:px-4 bg-[#181920] border-b border-[#262833] flex items-center justify-between gap-3 z-30 flex-shrink-0 relative">
         <div className="flex items-center gap-2.5">
           {/* Home Button linking to / */}
           <Link
@@ -2619,16 +2892,14 @@ export default function EditorPage() {
             title="ກັບຄືນໜ້າຫຼັກ (Back to Home)"
           >
             <Home className="w-3.5 h-3.5 text-cyan-400 group-hover:scale-110 transition-transform" />
-            <span className="font-bold">ໜ້າຫຼັກ (Home)</span>
+            <span className="hidden sm:inline font-bold">ໜ້າຫຼັກ</span>
           </Link>
 
           <div className="h-4 w-px bg-slate-700/60" />
 
           {/* CapCut Studio Logo */}
           <div className="flex items-center gap-1.5">
-            <div className="w-5 h-5 rounded-md bg-gradient-to-br from-blue-500 via-indigo-600 to-purple-600 flex items-center justify-center">
-              <Film className="w-3 h-3 text-white" />
-            </div>
+            <img src="/brand/saizup-symbol.png" alt="SAIZUP AI" className="h-6 w-6 object-contain" />
             <span className="text-xs font-bold tracking-tight text-white hidden md:inline">
               SAIZUP AI Studio
             </span>
@@ -2641,7 +2912,7 @@ export default function EditorPage() {
             type="text"
             value={projectTitle}
             onChange={(e) => setProjectTitle(e.target.value)}
-            className="bg-transparent text-xs font-medium text-slate-300 focus:text-white focus:outline-none focus:border-b border-blue-500 max-w-[120px] truncate"
+            className="bg-[#11131b] text-sm font-medium text-white focus:outline-none focus:border-cyan-400 border border-slate-700 rounded-lg px-2.5 py-1.5 w-24 sm:w-36 truncate"
             title="ຊື່ໂປຣເຈັກ"
           />
 
@@ -2649,7 +2920,7 @@ export default function EditorPage() {
           <button
             type="button"
             onClick={handleResetToInitialDefault}
-            className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-[#1c1e29] border border-slate-700 hover:border-amber-500/60 text-slate-300 hover:text-amber-300 transition-colors"
+            className="hidden"
             title="ຣີເຊັດເປັນຄ່າເລີ່ມຕົ້ນ (Default State) ແລະ ລ້າງຄລິບເກົ່າ"
           >
             <RotateCcw className="w-3 h-3 text-amber-400" />
@@ -2660,18 +2931,18 @@ export default function EditorPage() {
           <button
             type="button"
             onClick={handleManualSave}
-            className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono bg-[#1c1e29] border border-slate-700 hover:border-cyan-500/50 text-slate-300 hover:text-cyan-300 transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-[#1c1e29] border border-slate-700 hover:border-cyan-500/50 text-slate-200 hover:text-cyan-300 transition-colors"
             title="ຄລິກເພື່ອບັນທຶກໂປຣເຈັກລົງໃນ Browser ทັນที"
           >
             <Save className="w-3 h-3 text-cyan-400" />
-            <span>{isSaved ? "Saved" : "Save"}</span>
-            {lastSavedTime && <span className="text-slate-500 text-[9px]">({lastSavedTime})</span>}
+            <span>{isSaved ? "ບັນທຶກແລ້ວ" : "ບັນທຶກ"}</span>
+            <span className="hidden xl:inline text-slate-500 text-[10px]">{lastSavedTime}</span>
           </button>
 
           {/* Subtitle Studio Quick Switch */}
           <Link
             href="/subtitles"
-            className="hidden lg:flex items-center gap-1 px-2.5 py-1 rounded bg-[#1c1e29] hover:bg-[#25283A] text-slate-300 hover:text-cyan-400 border border-slate-700/60 text-[11px] font-semibold transition-colors"
+            className="hidden"
             title="ສະຫຼັບໄປໂໝດສ້າງຊັບໄຕເຕິລຢ່າງດຽວ"
           >
             <Subtitles className="w-3 h-3 text-cyan-400" />
@@ -2687,7 +2958,7 @@ export default function EditorPage() {
         </div>
 
         {/* Top Right: AI Cutter, Shortcuts, Import .saizup, Import Video, Export .saizup, Export Video */}
-        <div className="flex items-center gap-1.5 md:gap-2">
+        <div className="hidden">
           {/* AI Auto-Cutter Button */}
           <button
             onClick={() => setIsAiCutterOpen(true)}
@@ -2789,6 +3060,57 @@ export default function EditorPage() {
             <span>Export</span>
           </button>
         </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <div
+            className="relative"
+            onBlur={(e) => {
+              const nextTarget = e.relatedTarget as Node | null;
+              if (!nextTarget || !e.currentTarget.contains(nextTarget)) setIsHeaderMenuOpen(false);
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setIsHeaderMenuOpen((open) => !open)}
+              className="h-10 px-2.5 rounded-xl border border-slate-700 bg-[#20222d] hover:bg-[#2a2d3a] text-slate-200 text-sm font-semibold flex items-center gap-2"
+              aria-expanded={isHeaderMenuOpen}
+              aria-label="More project actions"
+            >
+              <MoreHorizontal className="w-4 h-4" />
+              <span className="hidden sm:inline">ອື່ນໆ</span>
+            </button>
+            {isHeaderMenuOpen && (
+              <div className="absolute right-0 top-full mt-2 w-64 rounded-2xl border border-slate-700 bg-[#1b1d27] p-2 shadow-2xl z-50">
+                <div className="px-2 py-1.5 text-[11px] font-bold text-slate-500">ເຄື່ອງມືໂປຣເຈັກ</div>
+                <button type="button" onClick={() => { setIsHeaderMenuOpen(false); handleResetToInitialDefault(); }} className="w-full rounded-xl px-2.5 py-2 text-left text-sm text-slate-200 hover:bg-[#292c38] flex items-center gap-2"><RotateCcw className="w-4 h-4 text-amber-300" /> ໂປຣເຈັກໃໝ່</button>
+                <button type="button" onClick={() => { setIsHeaderMenuOpen(false); projectFileInputRef.current?.click(); }} className="w-full rounded-xl px-2.5 py-2 text-left text-sm text-slate-200 hover:bg-[#292c38] flex items-center gap-2"><FolderOpen className="w-4 h-4 text-cyan-300" /> ເປີດໂປຣເຈັກ (.saizup)</button>
+                <button type="button" onClick={() => { setIsHeaderMenuOpen(false); handleExportProjectPackage(); }} className="w-full rounded-xl px-2.5 py-2 text-left text-sm text-slate-200 hover:bg-[#292c38] flex items-center gap-2"><Save className="w-4 h-4 text-cyan-300" /> ດາວໂຫຼດໂປຣເຈັກ (.saizup)</button>
+                <div className="my-1 border-t border-slate-800" />
+                <button type="button" onClick={() => { setIsHeaderMenuOpen(false); setIsAiCutterOpen(true); }} className="w-full rounded-xl px-2.5 py-2 text-left text-sm text-slate-200 hover:bg-[#292c38] flex items-center gap-2"><Zap className="w-4 h-4 text-violet-300" /> AI ຕັດຄລິບ</button>
+                <button type="button" onClick={() => { setIsHeaderMenuOpen(false); setIsShortcutsOpen(true); }} className="w-full rounded-xl px-2.5 py-2 text-left text-sm text-slate-200 hover:bg-[#292c38] flex items-center gap-2"><Keyboard className="w-4 h-4 text-slate-400" /> ຄີລັດຄີບອດ</button>
+                <Link href="/subtitles" onClick={() => setIsHeaderMenuOpen(false)} className="w-full rounded-xl px-2.5 py-2 text-sm text-slate-200 hover:bg-[#292c38] flex items-center gap-2"><Subtitles className="w-4 h-4 text-cyan-300" /> Subtitle Studio</Link>
+                <button type="button" onClick={() => { setIsHeaderMenuOpen(false); setIsAuthOpen(true); }} className="w-full rounded-xl px-2.5 py-2 text-left text-sm text-slate-200 hover:bg-[#292c38] flex items-center gap-2"><User className="w-4 h-4 text-slate-400" /> ບັນຊີ / ແພັກເກດ {currentUser?.plan ? "· " + currentUser.plan : ""}</button>
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="h-10 px-3 sm:px-4 rounded-xl bg-[#20232e] hover:bg-[#292d3a] border border-slate-700 text-white text-sm font-semibold flex items-center gap-2 transition-colors"
+          >
+            <Upload className="w-4 h-4 text-cyan-300" />
+            <span className="hidden sm:inline">ເພີ່ມວິດີໂອ</span>
+            <span className="sm:hidden">ວິດີໂອ</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleExport}
+            className="h-10 px-3 sm:px-4 rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 hover:brightness-110 text-slate-950 text-sm font-extrabold flex items-center gap-2 shadow-lg shadow-cyan-500/10 transition"
+          >
+            <Download className="w-4 h-4" />
+            <span>Export</span>
+          </button>
+        </div>
       </header>
 
       {/* Recover Saved Draft Banner (Optional, non-intrusive banner if user wants to restore previous draft) */}
@@ -2831,11 +3153,11 @@ export default function EditorPage() {
           className="hidden md:flex bg-[#181920] border-r border-[#262833] flex-shrink-0 flex-col overflow-hidden relative transition-[width] duration-75"
         >
           {/* CapCut Resource Library Tabs: Media, Captions, Audio */}
-          <div className="h-10 px-2 border-b border-[#262833] flex items-center gap-1 overflow-x-auto no-scrollbar">
+          <div className="h-12 px-2 border-b border-[#262833] flex items-center gap-1.5 overflow-x-auto no-scrollbar">
             {[
-              { id: "media", label: "Media (ສື່)", icon: Film },
-              { id: "captions", label: "Captions (ຊັບ)", icon: Subtitles },
-              { id: "audio", label: "Audio (ສຽງ)", icon: Volume2 },
+              { id: "media", label: "ສື່", icon: Film },
+              { id: "captions", label: "ຄຳບັນຍາຍ", icon: Subtitles },
+              { id: "audio", label: "ສຽງ", icon: Volume2 },
             ].map((tab) => {
               const Icon = tab.icon;
               const isActive = activeLeftTab === tab.id;
@@ -2843,7 +3165,7 @@ export default function EditorPage() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveLeftTab(tab.id as any)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all ${
                     isActive ? "text-cyan-400 bg-[#252733] shadow-sm" : "text-slate-400 hover:text-slate-200 hover:bg-[#1e202b]"
                   }`}
                 >
@@ -2852,6 +3174,21 @@ export default function EditorPage() {
                 </button>
               );
             })}
+          </div>
+
+          <div className="grid grid-cols-3 gap-1.5 border-b border-[#262833] bg-[#14151c] px-2 py-2">
+            <button type="button" onClick={() => { setActiveLeftTab("media"); if (!videoUrl && !videoFile) fileInputRef.current?.click(); }} className={"rounded-xl px-2 py-2 text-left transition " + (!videoUrl && !videoFile ? "bg-cyan-500/15 ring-1 ring-cyan-500/40" : "hover:bg-[#20222d]")}>
+              <span className="flex items-center gap-1.5 text-[11px] font-bold text-white"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-500 text-[10px] text-slate-950">1</span> ວິດີໂອ</span>
+              <span className="mt-1 block pl-6 text-[10px] text-slate-400">{videoUrl || videoFile ? "ພ້ອມແລ້ວ" : "ເພີ່ມຄລິບ"}</span>
+            </button>
+            <button type="button" onClick={() => setActiveLeftTab("captions")} className={"rounded-xl px-2 py-2 text-left transition " + (activeLeftTab === "captions" ? "bg-cyan-500/15 ring-1 ring-cyan-500/40" : "hover:bg-[#20222d]")}>
+              <span className="flex items-center gap-1.5 text-[11px] font-bold text-white"><span className={"flex h-5 w-5 items-center justify-center rounded-full text-[10px] " + (subtitles.length ? "bg-emerald-400 text-slate-950" : "bg-slate-700 text-white")}>2</span> ຊັບ</span>
+              <span className="mt-1 block pl-6 text-[10px] text-slate-400">{subtitles.length ? subtitles.length + " ບັນທັດ" : "ສ້າງຊັບ"}</span>
+            </button>
+            <button type="button" onClick={handleExport} className="rounded-xl px-2 py-2 text-left transition hover:bg-[#20222d]">
+              <span className="flex items-center gap-1.5 text-[11px] font-bold text-white"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-700 text-[10px] text-white">3</span> ສົ່ງອອກ</span>
+              <span className="mt-1 block pl-6 text-[10px] text-slate-400">ບັນທຶກວິດີໂອ</span>
+            </button>
           </div>
 
           {/* Left Panel Inner Content */}
@@ -2864,41 +3201,16 @@ export default function EditorPage() {
                   onClick={() => fileInputRef.current?.click()}
                   className="p-5 rounded-2xl border-2 border-dashed border-slate-700 hover:border-cyan-400 bg-[#161824] cursor-pointer text-center space-y-2 transition-all hover:bg-[#1a1c2a] group"
                 >
-                  <div className="w-10 h-10 rounded-full bg-cyan-500/10 text-cyan-400 mx-auto flex items-center justify-center border border-cyan-500/30 group-hover:scale-110 transition-transform">
-                    <Plus className="w-5 h-5" />
+                <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 text-cyan-300 mx-auto flex items-center justify-center border border-cyan-500/30 group-hover:scale-105 transition-transform">
+                    <Plus className="w-6 h-6" />
                   </div>
                   <div>
-                    <div className="text-xs font-bold text-white">Import Video (ອັບໂຫຼດຄລິບໃໝ່)</div>
-                    <p className="text-[10px] text-slate-400 mt-0.5">MP4, MOV, WebM • ຄລິກ ຫຼື ລາກໄຟລ໌ມາໃສ່</p>
+                    <div className="text-sm font-bold text-white">ເພີ່ມວິດີໂອ (Upload video)</div>
+                    <p className="text-xs text-slate-400 mt-1">MP4, MOV, WebM · ຄລິກ ຫຼື ລາກໄຟລ໌ມາວາງ</p>
                   </div>
                 </div>
 
-                {/* 2. Quick Sample Clips (Ready to edit in 1-click) */}
-                <div className="p-2.5 rounded-xl bg-[#151620] border border-slate-800 space-y-1.5">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    ຄລິບຕົວຢ່າງທົດລອງ (Sample Clips):
-                  </div>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => handleAddMediaToTimeline("sample-1")}
-                      className="p-2 rounded-lg bg-[#1c1e2b] hover:bg-[#252838] border border-slate-700/60 text-left transition-all"
-                    >
-                      <div className="text-[11px] font-bold text-white truncate">ຄລິບ 1: ພາສາລາວ</div>
-                      <div className="text-[9px] text-cyan-400">9:16 • 15.0s</div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleAddMediaToTimeline("sample-2")}
-                      className="p-2 rounded-lg bg-[#1c1e2b] hover:bg-[#252838] border border-slate-700/60 text-left transition-all"
-                    >
-                      <div className="text-[11px] font-bold text-white truncate">ຄລິບ 2: AI & Tech</div>
-                      <div className="text-[9px] text-cyan-400">9:16 • 12.0s</div>
-                    </button>
-                  </div>
-                </div>
-
-                {/* 3. Imported Media List with Video Previews */}
+                {/* Imported Media List with Video Previews */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs font-bold text-white px-0.5">
                     <span>ຄລິບວິດີໂອທັງໝົດ ({mediaList.length})</span>
@@ -3006,6 +3318,11 @@ export default function EditorPage() {
                       {customAssets.map((asset) => (
                         <div
                           key={asset.id}
+                          draggable={Boolean(asset.dataUrl)}
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData("application/x-saizup-audio-asset", asset.id);
+                            e.dataTransfer.effectAllowed = "copy";
+                          }}
                           className="p-2 rounded-xl bg-[#1c1e2b] border border-slate-800 flex items-center justify-between gap-2"
                         >
                           <div className="flex items-center gap-2 truncate">
@@ -3022,9 +3339,7 @@ export default function EditorPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => {
-                                showToast(`🎵 ເພີ່ມ "${asset.name}" ໃສ່ໄທມ໌ໄລນ໌ແລ້ວ!`);
-                              }}
+                              onClick={() => addSoundClip({ name: asset.name, assetId: asset.id, kind: "uploaded" })}
                               className="w-6 h-6 rounded bg-cyan-500/20 hover:bg-cyan-500 text-cyan-300 hover:text-black flex items-center justify-center"
                               title="ເພີ່ມໃສ່ໄທມ໌ໄລນ໌"
                             >
@@ -3045,49 +3360,72 @@ export default function EditorPage() {
                   )}
                 </div>
 
-                {/* 2. Background Music (BGM) */}
-                <div className="p-3 rounded-2xl bg-[#161824] border border-slate-800 space-y-2">
-                  <div className="flex items-center justify-between">
+                {/* MyInstants catalog: preview, favorite, drag, or add at playhead */}
+                <div className="p-3 rounded-2xl bg-[#161824] border border-cyan-500/30 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                      <Music className="w-3.5 h-3.5 text-cyan-400" />
-                      <span>Background Music (ເພງປະກອບ)</span>
+                      <Search className="w-3.5 h-3.5 text-cyan-400" />
+                      MyInstants sound effects
                     </span>
-                    <span className="text-[9px] text-cyan-400 font-mono">Royalty Free</span>
+                    <a href="https://www.myinstants.com/en/categories/sound%20effects/us/?page=5&name=sound%20effects" target="_blank" rel="noreferrer" className="text-[9px] text-cyan-300 hover:underline">ເປີດເວັບຕົ້ນສະບັບ ↗</a>
                   </div>
-                  <div className="space-y-1.5">
-                    {[
-                      { id: "bgm-1", name: "Chill Lofi Beat", dur: "02:30", genre: "Lofi / Relax" },
-                      { id: "bgm-2", name: "Upbeat Vlog Pop", dur: "01:45", genre: "Vlog / TikTok" },
-                      { id: "bgm-3", name: "Cinematic Dramatic", dur: "02:10", genre: "Trailer / Story" },
-                    ].map((bgm) => (
-                      <div
-                        key={bgm.id}
-                        className="p-2 rounded-xl bg-[#1e202e] border border-slate-800/80 hover:border-slate-700 flex items-center justify-between gap-2"
-                      >
-                        <div>
-                          <div className="text-xs font-bold text-white truncate">{bgm.name}</div>
-                          <div className="text-[9px] text-slate-400">{bgm.genre} • {bgm.dur}</div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => showToast(`▶️ ຫຼິ້ນຕົວຢ່າງ: ${bgm.name}`)}
-                            className="px-2 py-1 rounded-lg bg-[#282b3d] hover:bg-cyan-500 hover:text-black text-slate-200 text-[10px] font-bold transition-colors"
-                          >
-                            ຟັງ
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => showToast(`🎵 ເພີ່ມ ${bgm.name} ໃສ່ແທຣັກສຽງແລ້ວ!`)}
-                            className="w-6 h-6 rounded-lg bg-cyan-500/20 hover:bg-cyan-500 text-cyan-300 hover:text-black flex items-center justify-center transition-colors"
-                            title="ເພີ່ມໃສ່ໄທມ໌ໄລນ໌"
-                          >
-                            <Plus className="w-3 h-3" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                  <form
+                    className="flex gap-1.5"
+                    onSubmit={(e) => { e.preventDefault(); setMyInstantsSearchTerm(myInstantsQuery.trim() || "sound effects"); setMyInstantsPage(1); setShowMyInstantsFavorites(false); setMyInstantsRefreshKey((key) => key + 1); }}
+                  >
+                    <input
+                      value={myInstantsQuery}
+                      onChange={(e) => setMyInstantsQuery(e.target.value)}
+                      placeholder="ຄົ້ນຫາສຽງ..."
+                      className="min-w-0 flex-1 rounded-lg bg-[#10121a] border border-slate-700 px-2.5 py-2 text-[11px] text-white placeholder:text-slate-500 focus:border-cyan-400 outline-none"
+                    />
+                    <button type="submit" className="rounded-lg bg-cyan-500 px-2.5 text-[10px] font-bold text-black">ຄົ້ນຫາ</button>
+                  </form>
+                  <div className="flex items-center justify-between text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => setShowMyInstantsFavorites((value) => !value)}
+                      className={"inline-flex items-center gap-1 rounded-md px-2 py-1 " + (showMyInstantsFavorites ? "bg-amber-400/15 text-amber-300" : "text-slate-400 hover:text-white")}
+                    >
+                      <Star className="w-3 h-3" /> ລາຍການຕິດດາວ ({myInstantsFavorites.length})
+                    </button>
+                    <span className="text-slate-500">ໜ້າ {myInstantsPage}</span>
                   </div>
+                  {myInstantsError && <div className="rounded-lg bg-rose-500/10 px-2 py-1.5 text-[10px] text-rose-300">{myInstantsError} <button type="button" onClick={() => setMyInstantsRefreshKey((key) => key + 1)} className="underline">ລອງອີກຄັ້ງ</button> · <a href="https://www.myinstants.com/en/categories/sound%20effects/us/?page=5&name=sound%20effects" target="_blank" rel="noreferrer" className="underline">ເບິ່ງທີ່ MyInstants</a></div>}
+                  <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-1">
+                    {(showMyInstantsFavorites ? myInstantsFavorites : myInstantsSounds).map((sound) => {
+                      const isFavorite = myInstantsFavorites.some((item) => item.slug === sound.slug);
+                      return (
+                        <div
+                          key={sound.slug}
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData("application/x-saizup-myinstants", JSON.stringify(sound));
+                            e.dataTransfer.effectAllowed = "copy";
+                          }}
+                          className="rounded-xl bg-[#1c1e2b] border border-slate-800 hover:border-cyan-500/50 p-2 flex items-center gap-2"
+                        >
+                          <button type="button" onClick={() => previewMyInstantsSound(sound)} className="w-8 h-8 shrink-0 rounded-lg bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500 hover:text-black flex items-center justify-center" title="ຟັງຕົວຢ່າງ"><Play className="w-3.5 h-3.5" /></button>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-[11px] font-bold text-white" title={sound.name}>{sound.name}</div>
+                            <div className="truncate text-[9px] text-slate-500">{sound.description || (sound.tags || []).slice(0, 3).join(" · ") || "MyInstants sound effect"}</div>
+                          </div>
+                          <button type="button" onClick={() => toggleMyInstantsFavorite(sound)} className={"shrink-0 p-1 " + (isFavorite ? "text-amber-300" : "text-slate-500 hover:text-amber-300")} title={isFavorite ? "ເອົາອອກຈາກລາຍການຕິດດາວ" : "ຕິດດາວ"}><Star className="w-3.5 h-3.5" fill={isFavorite ? "currentColor" : "none"} /></button>
+                          <a href={sound.sound} target="_blank" rel="noreferrer" className="shrink-0 p-1 text-slate-500 hover:text-white" title="ເປີດໄຟລ໌ສຽງຈາກ MyInstants"><Download className="w-3.5 h-3.5" /></a>
+                          <button type="button" onClick={() => addMyInstantsSound(sound)} className="shrink-0 w-7 h-7 rounded-lg bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500 hover:text-black flex items-center justify-center" title="ເພີ່ມສຽງໃສ່ timeline ທີ່ playhead"><Plus className="w-3.5 h-3.5" /></button>
+                        </div>
+                      );
+                    })}
+                    {myInstantsLoading && <div className="py-4 text-center text-[10px] text-cyan-300 animate-pulse">ກຳລັງໂຫຼດສຽງ...</div>}
+                    {!myInstantsLoading && !myInstantsError && (showMyInstantsFavorites ? myInstantsFavorites : myInstantsSounds).length === 0 && <div className="py-4 text-center text-[10px] text-slate-500">{showMyInstantsFavorites ? "ຍັງບໍ່ມີສຽງທີ່ຕິດດາວ" : "ບໍ່ພົບສຽງ. ລອງຄຳຄົ້ນຫາອື່ນ."}</div>}
+                  </div>
+                  {!showMyInstantsFavorites && (
+                    <div className="flex justify-between">
+                      <button type="button" onClick={() => setMyInstantsPage((page) => Math.max(1, page - 1))} disabled={myInstantsPage <= 1 || myInstantsLoading} className="rounded-lg border border-slate-700 px-2.5 py-1 text-[10px] text-slate-300 disabled:opacity-40">← ກ່ອນໜ້າ</button>
+                      <button type="button" onClick={() => setMyInstantsPage((page) => page + 1)} disabled={!myInstantsHasNext || myInstantsLoading} className="rounded-lg border border-slate-700 px-2.5 py-1 text-[10px] text-slate-300 disabled:opacity-40">ໜ້າຕໍ່ໄປ →</button>
+                    </div>
+                  )}
+                  <p className="text-[9px] text-slate-500">ລາກກາດສຽງລົງແທຣັກ SFX. ສຽງຍັງຢູ່ໂຮສຕົ້ນສະບັບ MyInstants.</p>
                 </div>
 
                 {/* 3. Essential Sound Effects Library */}
@@ -3104,7 +3442,12 @@ export default function EditorPage() {
                     {ESSENTIAL_SOUND_EFFECTS.map((sfx) => (
                       <div
                         key={sfx.id}
-                        className="p-2.5 rounded-xl bg-[#1c1e2b] border border-slate-800 hover:border-slate-700 flex items-center justify-between gap-2 transition-all group"
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("application/x-saizup-synthetic-sfx", sfx.id);
+                          e.dataTransfer.effectAllowed = "copy";
+                        }}
+                        className="p-2.5 rounded-xl bg-[#1c1e2b] border border-slate-800 hover:border-slate-700 flex items-center justify-between gap-2 transition-all group cursor-grab"
                       >
                         <div className="flex items-center gap-2.5">
                           <span className="text-lg group-hover:scale-110 transition-transform">{sfx.icon}</span>
@@ -3116,10 +3459,7 @@ export default function EditorPage() {
                         <div className="flex items-center gap-1.5">
                           <button
                             type="button"
-                            onClick={() => {
-                              playSoundEffect(sfx.id);
-                              showToast(`🔊 ຫຼິ້ນສຽງ ${sfx.name}`);
-                            }}
+                            onClick={() => playSoundEffect(sfx.id)}
                             className="px-2 py-1 rounded-lg bg-[#25283A] hover:bg-cyan-500 hover:text-black text-slate-200 text-[11px] font-bold transition-colors flex items-center gap-1"
                           >
                             <Play className="w-2.5 h-2.5" />
@@ -3127,10 +3467,7 @@ export default function EditorPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => {
-                              playSoundEffect(sfx.id);
-                              showToast(`🎵 ເພີ່ມສຽງ "${sfx.name}" ໃສ່ໄທມ໌ໄລນ໌ແລ້ວ!`);
-                            }}
+                            onClick={() => addSoundClip({ name: sfx.name, duration: sfx.durationSec, kind: "synthetic", effectId: sfx.id })}
                             className="w-7 h-7 rounded-lg bg-cyan-500/15 hover:bg-cyan-500 text-cyan-300 hover:text-black flex items-center justify-center transition-colors"
                             title="ເພີ່ມໃສ່ໄທມ໌ໄລນ໌"
                           >
@@ -3147,172 +3484,98 @@ export default function EditorPage() {
             {/* TAB: CAPTIONS / SPEECH-TO-TEXT */}
             {activeLeftTab === "captions" && (
               <div className="space-y-3">
-                <div className="p-3.5 rounded-xl bg-[#1f212b] border border-slate-700/60 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-yellow-400" />
-                      <span>Auto Captions (ຖອດສຽງ AI)</span>
-                    </div>
-                    <button
-                      onClick={() => setAiCaptionsEnabled(!aiCaptionsEnabled)}
-                      className={`w-9 h-5 rounded-full transition-colors relative ${
-                        aiCaptionsEnabled ? "bg-cyan-500" : "bg-slate-700"
-                      }`}
-                    >
-                      <div
-                        className={`w-3.5 h-3.5 rounded-full bg-white transition-transform absolute top-0.5 ${
-                          aiCaptionsEnabled ? "left-5" : "left-0.5"
-                        }`}
-                      />
-                    </button>
-                  </div>
-
-                  {/* Language Selector (Lao with English Loanwords, Thai, Mixed, English) */}
-                  <div className="space-y-1">
-                    <div className="grid grid-cols-4 gap-1 bg-[#15161d] p-1 rounded-lg text-[10px] font-bold">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setClipLanguage("lo");
-                          showToast("ເລືອກ: ພາສາລາວ (ປະສົມຄຳອັງກິດໄດ້ ຫ້າມອັງກິດລ້ວນ)");
-                        }}
-                        className={`py-1.5 text-center rounded transition-all ${
-                          clipLanguage === "lo"
-                            ? "bg-cyan-500 text-black font-extrabold shadow"
-                            : "text-slate-400 hover:text-white"
-                        }`}
-                        title="ພາສາລາວ (ປະສົມຄຳອັງກິດສະເພາະໄດ້ ຫ້າມອັງກິດລ້ວນ)"
-                      >
-                        🇱🇦 ລາວ+EN
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setClipLanguage("th");
-                          showToast("ເລືອກ: ພາສາໄທ (Thai + English)");
-                        }}
-                        className={`py-1.5 text-center rounded transition-all ${
-                          clipLanguage === "th"
-                            ? "bg-cyan-500 text-black font-extrabold shadow"
-                            : "text-slate-400 hover:text-white"
-                        }`}
-                        title="ພາສາໄທ (Thai + English)"
-                      >
-                        🇹🇭 ໄທ+EN
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setClipLanguage("mixed");
-                          showToast("ເລືອກ: ລາວ + ອັງກິດ (Code-Switching)");
-                        }}
-                        className={`py-1.5 text-center rounded transition-all ${
-                          clipLanguage === "mixed"
-                            ? "bg-cyan-500 text-black font-extrabold shadow"
-                            : "text-slate-400 hover:text-white"
-                        }`}
-                        title="ລາວ + ອັງກິດ (Mixed Code-Switching)"
-                      >
-                        🌐 ລາວ+ອັງກິດ
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setClipLanguage("en");
-                          showToast("ເລືອກ: English");
-                        }}
-                        className={`py-1.5 text-center rounded transition-all ${
-                          clipLanguage === "en"
-                            ? "bg-cyan-500 text-black font-extrabold shadow"
-                            : "text-slate-400 hover:text-white"
-                        }`}
-                        title="English"
-                      >
-                        🇬🇧 English
-                      </button>
-                    </div>
-                    <div className="text-[10px] text-slate-400 px-1 flex items-center justify-between">
-                      <span>ພາສາຖອດສຽງ:</span>
-                      <span className="text-cyan-400 font-semibold truncate max-w-[200px]">
-                        {clipLanguage === "lo"
-                          ? "🇱🇦 ພາສາລາວ (ປະສົມຄຳອັງກິດໄດ້)"
-                          : clipLanguage === "th"
-                          ? "🇹🇭 ພາສາໄທ (Thai + EN)"
-                          : clipLanguage === "mixed"
-                          ? "🌐 ລາວ + ອັງກິດ (Mixed)"
-                          : "🇬🇧 English"}
-                      </span>
-                    </div>
-
-                    {/* Dedicated Subtitle Studio Shortcut */}
-                    <Link
-                      href="/subtitles"
-                      className="p-2 rounded-lg bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-[11px] font-semibold flex items-center justify-between transition-colors mt-2"
-                    >
-                      <span>🎯 ຕ້ອງການໃສ່ຊັບຢ່າງດຽວແບບໄວ?</span>
-                      <span className="font-bold underline">Subtitle Studio →</span>
-                    </Link>
-
-                    {/* AI Engine Version Selector (Unbranded, Credit Costs Defined) */}
-                    <div className="space-y-1 mt-2">
-                      <div className="flex items-center justify-between text-[10px] text-slate-400 font-semibold px-1">
-                        <span>AI Engine:</span>
-                        <span className="text-cyan-400 font-mono">SAIZUP Engine</span>
+                <div className="p-4 rounded-2xl bg-[#1f212b] border border-slate-700/60 space-y-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-300">
+                        <Sparkles className="w-4 h-4" />
                       </div>
-                      <div className="grid grid-cols-3 gap-1">
-                        {[
-                          { id: "v1", label: "AI v1", cost: "5cr" },
-                          { id: "v2", label: "AI v2", cost: "10cr" },
-                          { id: "v3", label: "AI v3", cost: "20cr" },
-                        ].map((m) => (
-                          <button
-                            key={m.id}
-                            type="button"
-                            onClick={() => setEditorAiVersion(m.id as any)}
-                            className={`py-1 px-1 rounded text-[10px] font-bold border transition-all ${
-                              editorAiVersion === m.id
-                                ? "bg-cyan-400 text-black border-cyan-300"
-                                : "bg-[#181926] text-slate-400 border-slate-700 hover:text-slate-200"
-                            }`}
-                          >
-                            <span>{m.label}</span>
-                            <span className="ml-1 opacity-75 text-[9px]">({m.cost})</span>
-                          </button>
-                        ))}
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-bold text-white">ສ້າງຊັບຈາກສຽງ</h3>
+                        <p className="mt-1 text-xs leading-relaxed text-slate-400">ອັບຄລິບ → ເລືອກພາສາ → ກົດສ້າງ</p>
                       </div>
                     </div>
+                    <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold ${videoFile ? "bg-emerald-500/10 text-emerald-300" : "bg-slate-700/60 text-slate-400"}`}>
+                      {videoFile ? "ຄລິບພ້ອມແລ້ວ" : "ຍັງບໍ່ມີຄລິບ"}
+                    </span>
+                  </div>
 
-                    {/* Subtitle Interval Mode (30s vs Sentence) */}
-                    <div className="grid grid-cols-2 gap-1 mt-2">
-                      <button
-                        type="button"
-                        onClick={() => setEditorIntervalMode("sentence")}
-                        className={`py-1 text-[10px] rounded font-semibold border ${
-                          editorIntervalMode === "sentence"
-                            ? "bg-[#25283A] text-cyan-400 border-cyan-500/40"
-                            : "bg-[#161824] text-slate-400 border-slate-800"
-                        }`}
-                      >
-                        ⚡ ປະໂຫຍກ (2-4s)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditorIntervalMode("30s")}
-                        className={`py-1 text-[10px] rounded font-semibold border ${
-                          editorIntervalMode === "30s"
-                            ? "bg-[#25283A] text-cyan-400 border-cyan-500/40"
-                            : "bg-[#161824] text-slate-400 border-slate-800"
-                        }`}
-                      >
-                        ⏱️ ຊ່ວງ 30s
-                      </button>
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-300">1. ພາສາທີ່ເວົ້າໃນຄລິບ</span>
+                    <select
+                      value={clipLanguage}
+                      onChange={(e) => setClipLanguage(e.target.value as "lo" | "th" | "mixed" | "en")}
+                      className="w-full rounded-xl border border-slate-700 bg-[#151722] px-3 py-2.5 text-sm text-white focus:border-cyan-400"
+                    >
+                      <option value="lo">🇱🇦 ລາວ + ຄຳອັງກິດປະປົນ</option>
+                      <option value="th">🇹🇭 ໄທ + ຄຳອັງກິດປະປົນ</option>
+                      <option value="mixed">🌐 ລາວ ແລະ ອັງກິດປະສົມ</option>
+                      <option value="en">🇬🇧 English</option>
+                    </select>
+                  </label>
+
+                  {/* Simple quality preset selector */}
+                  <label className="block space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-300">2. ຄວາມໄວ ແລະຄວາມລະອຽດ</span>
+                    <select
+                      value={editorAiVersion}
+                      onChange={(e) => setEditorAiVersion(e.target.value as "v1" | "v2" | "v3" | "v4")}
+                      className="w-full rounded-xl border border-slate-700 bg-[#151722] px-3 py-2.5 text-sm text-white focus:border-cyan-400"
+                    >
+                      <option value="v1">Free · Gemini 3.5 Flash-Lite · 5 credits</option>
+                      <option value="v2">Gold · Gemini 3.8 Flash · 12 credits</option>
+                      <option value="v3">Plus · Gemini 3.1 Pro · 35 credits</option>
+                      <option value="v4">Pro · Gemini 4 Argon · 80 credits</option>
+                    </select>
+                  </label>
+
+                  {/* Subtitle Interval Mode (30s vs Sentence) */}
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-300">3. ການແບ່ງຊັບ</span>
+                    <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setEditorIntervalMode("sentence")}
+                          className={`min-h-12 rounded-xl border px-2.5 py-2 text-left text-xs font-semibold transition ${
+                            editorIntervalMode === "sentence"
+                              ? "bg-cyan-500/15 text-cyan-200 border-cyan-500/50"
+                              : "bg-[#161824] text-slate-300 border-slate-800 hover:border-slate-600"
+                          }`}
+                        >
+                          <span className="block">ຕາມປະໂຫຍກ</span>
+                          <span className="mt-0.5 block text-[10px] opacity-70">ປະມານ 2–4 ວິນາທີ</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditorIntervalMode("30s")}
+                          className={`min-h-12 rounded-xl border px-2.5 py-2 text-left text-xs font-semibold transition ${
+                            editorIntervalMode === "30s"
+                              ? "bg-cyan-500/15 text-cyan-200 border-cyan-500/50"
+                              : "bg-[#161824] text-slate-300 border-slate-800 hover:border-slate-600"
+                          }`}
+                        >
+                          <span className="block">ທຸກ 30 ວິນາທີ</span>
+                          <span className="mt-0.5 block text-[10px] opacity-70">ຊັບເປັນຊ່ວງຍາວ</span>
+                        </button>
                     </div>
                   </div>
+
+                  {!videoFile && (
+                    <div className="rounded-xl border border-amber-500/25 bg-amber-500/5 p-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-amber-100">ຕ້ອງເພີ່ມວິດີໂອກ່ອນ</p>
+                        <p className="mt-0.5 text-[10px] text-slate-400">ເລືອກຄລິບຈາກເຄື່ອງເພື່ອຖອດສຽງຈິງ</p>
+                      </div>
+                      <button type="button" onClick={() => fileInputRef.current?.click()} className="shrink-0 rounded-lg bg-[#2a2d3a] px-3 py-2 text-xs font-bold text-white hover:bg-[#363a49]">ເລືອກວິດີໂອ</button>
+                    </div>
+                  )}
 
                   <button
+                    type="button"
                     onClick={handleGenerateAISubtitles}
-                    disabled={isGeneratingSubtitles}
-                    className="w-full py-2 rounded-lg text-xs font-bold text-black bg-cyan-400 hover:bg-cyan-300 transition-all flex items-center justify-center gap-1.5 shadow"
+                    disabled={isGeneratingSubtitles || !videoFile}
+                    title={!videoFile ? "ກະລຸນາເພີ່ມວິດີໂອກ່ອນ" : "ສ້າງຊັບຈາກສຽງໃນວິດີໂອ"}
+                    className="w-full min-h-12 rounded-xl text-sm font-bold text-slate-950 bg-cyan-400 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 transition-all flex items-center justify-center gap-2 shadow"
                   >
                     {isGeneratingSubtitles ? (
                       <>
@@ -3322,7 +3585,7 @@ export default function EditorPage() {
                     ) : (
                       <>
                         <Sparkles className="w-3.5 h-3.5" />
-                        <span>Generate Captions</span>
+                        <span>ສ້າງຄຳບັນຍາຍ</span>
                       </>
                     )}
                   </button>
@@ -3384,11 +3647,11 @@ export default function EditorPage() {
 
                   <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
                     {subtitles.length === 0 ? (
-                      <div className="py-8 px-3 text-center border border-dashed border-slate-700/60 rounded-xl bg-[#141622]/50">
-                        <Subtitles className="w-6 h-6 text-slate-500 mx-auto mb-2 opacity-50" />
-                        <p className="text-xs font-semibold text-slate-400">ຍັງບໍ່ມີຊັບໄຕເຕິລເທື່ອ</p>
-                        <p className="text-[10px] text-slate-500 mt-1">
-                          ນຳເຂົ້າວິດີໂອແລ້ວກົດ &quot;Generate Captions&quot; ຫຼື ກົດ &quot;+ ເພີ່ມຊັບ&quot;
+                      <div className="px-3 py-5 text-center border border-dashed border-slate-700/60 rounded-xl bg-[#141622]/50">
+                        <Subtitles className="w-6 h-6 text-slate-500 mx-auto mb-2 opacity-70" />
+                        <p className="text-sm font-semibold text-slate-300">ຍັງບໍ່ມີຊັບ</p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          {videoFile ? "ກົດ “ສ້າງຄຳບັນຍາຍ” ຫຼືເພີ່ມຊັບເອງ" : "ເລືອກວິດີໂອກ່ອນ ຫຼືເພີ່ມຊັບເອງ"}
                         </p>
                       </div>
                     ) : (
@@ -3536,13 +3799,13 @@ export default function EditorPage() {
           {/* Top Video Canvas Toolbar: Ratio & Guidelines / Grid Selection */}
           <div className="w-full flex flex-wrap items-center justify-between gap-1.5 text-xs text-slate-400 pb-1.5 px-2">
             <div className="flex items-center gap-2">
-              <span className="font-mono text-[11px] text-slate-400">Player-Timeline 01</span>
+              <span className="font-mono text-xs text-slate-400">Preview</span>
 
               {/* Aspect Ratio Selector (9:16, 16:9, 1:1, 4:5) */}
               <div className="flex items-center gap-0.5 bg-[#161722] p-0.5 rounded-lg border border-slate-800">
                 <span className="text-[10px] text-slate-400 px-1 font-semibold flex items-center gap-0.5">
                   <Crop className="w-2.5 h-2.5" />
-                  <span>ຂະໜາດ:</span>
+                  <span>ອັດຕາສ່ວນ:</span>
                 </span>
                 {(["9:16", "16:9", "1:1", "4:5"] as const).map((ratio) => (
                   <button
@@ -3571,7 +3834,7 @@ export default function EditorPage() {
                 }`}
                 title="ປ່ຽນໂໝດ: ຕັດໃຫ້ເຕັມຈໍ (Cover) ຫຼື ພໍດີຂອບ (Fit)"
               >
-                {videoFit === "cover" ? "Crop (ເຕັມຈໍ)" : "Fit (ພໍດີ)"}
+                {videoFit === "cover" ? "Cover" : "Fit"}
               </button>
 
               {/* Defined Canvas Resolution Badge (ສະແດງຂະໜາດໜ້າຈໍທີ່ກຳນົດ) */}
@@ -3581,10 +3844,10 @@ export default function EditorPage() {
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
                 <span>
-                  {aspectRatio === "9:16" && "📱 1080 × 1920 (9:16 Shorts/TikTok)"}
-                  {aspectRatio === "16:9" && "🖥️ 1920 × 1080 (16:9 YouTube)"}
-                  {aspectRatio === "1:1" && "⏹️ 1080 × 1080 (1:1 Square)"}
-                  {aspectRatio === "4:5" && "📸 1080 × 1350 (4:5 Portrait)"}
+                  {aspectRatio === "9:16" && "1080 × 1920"}
+                  {aspectRatio === "16:9" && "1920 × 1080"}
+                  {aspectRatio === "1:1" && "1080 × 1080"}
+                  {aspectRatio === "4:5" && "1080 × 1350"}
                 </span>
               </div>
 
@@ -3679,28 +3942,12 @@ export default function EditorPage() {
                   <ZoomIn className="w-3 h-3" />
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => handleSetZoomMode("fit")}
-                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${canvasZoomMode === "fit" ? "bg-cyan-500 text-black shadow-sm" : "text-slate-400 hover:text-white"}`}
-                  title="ປັບຂະໜາດໃຫ້ພໍດີກັບໜ້າຈໍ"
-                >
-                  ພໍດີໜ້າຈໍ
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSetZoomMode("fill")}
-                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${canvasZoomMode === "fill" ? "bg-cyan-500 text-black shadow-sm" : "text-slate-400 hover:text-white"}`}
-                  title="ຂະຫຍາຍເຕັມພື້ນທີ່"
-                >
-                  ເຕັມຈໍ
-                </button>
               </div>
             </div>
 
             {/* GUIDELINE & SAFE ZONE CONTROLS (Clean Social Media Safe Zones - NO DIVIDING LINES) */}
             <div className="flex items-center gap-1 bg-[#161722] p-0.5 rounded-lg border border-slate-800">
-              <span className="text-[10px] text-slate-400 px-1 font-semibold">📏 Safe Zone:</span>
+              <span className="text-[10px] text-slate-400 px-1 font-semibold">Safe Zone</span>
               <button
                 type="button"
                 onClick={() => {
@@ -4261,8 +4508,9 @@ export default function EditorPage() {
                 <div className="w-12 h-12 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center mb-2 border border-cyan-500/20">
                   <Upload className="w-6 h-6" />
                 </div>
-                <div className="text-xs font-bold text-white">Upload Your Video Clip</div>
-                <p className="text-[10px] text-slate-400 mt-1">MP4, MOV, WebM</p>
+                <div className="text-base font-bold text-white">ເພີ່ມວິດີໂອເພື່ອເລີ່ມຕັດຕໍ່</div>
+                <p className="text-sm text-slate-400 mt-1">ຄລິກເພື່ອເລືອກໄຟລ໌ ຫຼື ລາກວິດີໂອມາວາງ</p>
+                <span className="mt-3 rounded-lg border border-slate-700 bg-[#181b25] px-3 py-1.5 text-xs font-medium text-slate-300">MP4 · MOV · WebM</span>
               </div>
             )}
           </div>
@@ -4395,10 +4643,19 @@ export default function EditorPage() {
               (!activeSub ? (
                 <div className="py-12 px-4 text-center text-slate-500 space-y-2 border border-dashed border-slate-800 rounded-xl m-2">
                   <Type className="w-8 h-8 text-slate-600 mx-auto opacity-50" />
-                  <p className="text-xs font-semibold text-slate-400">ຍັງບໍ່ມີຊັບໄຕເຕິລທີ່ເລືອກ</p>
-                  <p className="text-[11px] text-slate-500">
-                    ນຳເຂົ້າວິດີໂອ ຫຼື ກົດ &quot;+ ເພີ່ມຊັບ&quot; ດ້ານຊ້າຍ ເພື່ອເລີ່ມຕົ້ນພິມ ແລະ ປັບແຕ່ງຊັບໄຕເຕິລ
+                  <p className="text-sm font-semibold text-slate-300">{subtitles.length ? "ເລືອກຊັບໃນ timeline ເພື່ອແກ້ໄຂ" : "ເລີ່ມຈາກວິດີໂອ ຫຼື ເພີ່ມຊັບ"}</p>
+                  <p className="text-xs text-slate-500">
+                    ອັບໂຫຼດຄລິບແລ້ວສ້າງຊັບຈາກສຽງ ຫຼືພິມຂໍ້ຄວາມເອງກໍໄດ້
                   </p>
+                  <div className="pt-2 flex flex-col gap-2">
+                    {!videoFile && !videoUrl && (
+                      <button type="button" onClick={() => fileInputRef.current?.click()} className="w-full rounded-xl bg-cyan-500 px-3 py-2 text-sm font-bold text-slate-950 hover:bg-cyan-400">1. ເພີ່ມວິດີໂອ</button>
+                    )}
+                    <button type="button" onClick={() => { setActiveLeftTab("captions"); handleAddSubtitleAtPlayhead(); }} className="w-full rounded-xl border border-slate-700 bg-[#20222d] px-3 py-2 text-sm font-semibold text-white hover:border-cyan-400">+ ເພີ່ມຊັບດ້ວຍຕົນເອງ</button>
+                    {videoFile && subtitles.length === 0 && (
+                      <button type="button" onClick={handleGenerateAISubtitles} className="w-full rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-sm font-semibold text-cyan-200 hover:bg-cyan-500/20">ສ້າງຊັບຈາກສຽງ</button>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-3 text-xs">
@@ -5797,19 +6054,63 @@ export default function EditorPage() {
                     </button>
                   </div>
 
-                  {/* Fade In & Fade Out */}
-                  <div className="space-y-2 pt-2 border-t border-slate-800">
-                    <div className="text-[10px] text-slate-400 font-bold">Fade In / Fade Out Curves:</div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="p-2.5 rounded-xl bg-[#1c1e2b] border border-slate-800 text-center">
-                        <div className="text-[10px] text-slate-400">Fade In</div>
-                        <div className="text-xs font-mono font-bold text-cyan-400">0.5s</div>
-                      </div>
-                      <div className="p-2.5 rounded-xl bg-[#1c1e2b] border border-slate-800 text-center">
-                        <div className="text-[10px] text-slate-400">Fade Out</div>
-                        <div className="text-xs font-mono font-bold text-cyan-400">0.8s</div>
-                      </div>
+                  <div className="rounded-xl bg-[#1c1e2b] border border-slate-800 p-2.5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-200">SFX / MyInstants volume</span>
+                      <button
+                        type="button"
+                        onClick={() => setTrackMutes((previous) => ({ ...previous, bgm: !previous.bgm }))}
+                        className={"text-[9px] font-bold " + (trackMutes.bgm ? "text-rose-300" : "text-emerald-300")}
+                      >
+                        {trackMutes.bgm ? "ເປີດສຽງ" : "ປິດສຽງ"}
+                      </button>
                     </div>
+                    <div className="flex items-center gap-2">
+                      <VolumeX className="w-3 h-3 text-slate-500" />
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={Math.round(soundTrackVolume * 100)}
+                        onChange={(e) => setSoundTrackVolume(Number(e.target.value) / 100)}
+                        className="flex-1 accent-cyan-400 h-1.5 bg-slate-700 rounded-lg cursor-pointer"
+                        aria-label="SFX and MyInstants volume"
+                      />
+                      <span className="w-8 text-right text-[10px] font-mono text-cyan-300">{Math.round(soundTrackVolume * 100)}%</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 pt-2 border-t border-slate-800">
+                    {selectedSoundClip ? (
+                      <>
+                        <div className="truncate text-[10px] font-bold text-white" title={selectedSoundClip.name}>ຄລິບທີ່ເລືອກ: {selectedSoundClip.name}</div>
+                        <div className="flex items-center justify-between text-[10px] text-slate-300">
+                          <span>ຄວາມດັງຄລິບ</span><span className="font-mono text-cyan-300">{Math.round(selectedSoundClip.volume * 100)}%</span>
+                        </div>
+                        <input
+                          type="range" min={0} max={100} value={Math.round(selectedSoundClip.volume * 100)}
+                          onChange={(e) => setSoundEffectClips((previous) => previous.map((clip) => clip.id === selectedSoundClip.id ? { ...clip, volume: Number(e.target.value) / 100 } : clip))}
+                          className="w-full accent-cyan-400 h-1.5 bg-slate-700 rounded-lg cursor-pointer"
+                          aria-label="Selected sound clip volume"
+                        />
+                        {selectedSoundClip.kind !== "synthetic" && (
+                          <div className="grid grid-cols-2 gap-2">
+                            <label className="text-[9px] text-slate-400">Fade in
+                              <select value={selectedSoundClip.fadeInSec || 0} onChange={(e) => setSoundEffectClips((previous) => previous.map((clip) => clip.id === selectedSoundClip.id ? { ...clip, fadeInSec: Number(e.target.value) } : clip))} className="mt-1 w-full rounded-md bg-[#10121a] border border-slate-700 px-1.5 py-1 text-[10px] text-white">
+                                <option value={0}>None</option><option value={0.25}>0.25s</option><option value={0.5}>0.5s</option><option value={1}>1s</option><option value={2}>2s</option>
+                              </select>
+                            </label>
+                            <label className="text-[9px] text-slate-400">Fade out
+                              <select value={selectedSoundClip.fadeOutSec || 0} onChange={(e) => setSoundEffectClips((previous) => previous.map((clip) => clip.id === selectedSoundClip.id ? { ...clip, fadeOutSec: Number(e.target.value) } : clip))} className="mt-1 w-full rounded-md bg-[#10121a] border border-slate-700 px-1.5 py-1 text-[10px] text-white">
+                                <option value={0}>None</option><option value={0.25}>0.25s</option><option value={0.5}>0.5s</option><option value={1}>1s</option><option value={2}>2s</option>
+                              </select>
+                            </label>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-[10px] text-slate-500">ເລືອກຄລິບສຽງໃນ timeline ເພື່ອປັບລະດັບສຽງ ແລະ fade.</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -5834,7 +6135,7 @@ export default function EditorPage() {
         />
 
         {/* Timeline Tools Bar (Matching Image 4) */}
-        <div className="h-9 px-3 bg-[#181920] border-b border-[#262833] flex items-center justify-between text-xs select-none">
+        <div className="h-11 px-3 sm:px-4 bg-[#181920] border-b border-[#262833] flex items-center justify-between text-xs select-none">
           <div className="flex items-center gap-1">
             {/* + Add Material / Import with Cyan Dot */}
             <div className="relative">
@@ -6067,10 +6368,11 @@ export default function EditorPage() {
             <button
               type="button"
               onClick={() => setIsTimelineCollapsed(!isTimelineCollapsed)}
-              className="p-1 hover:text-white"
+              className="px-2 py-1 rounded-lg hover:bg-[#252838] hover:text-white flex items-center gap-1.5"
               title={isTimelineCollapsed ? "Expand Timeline" : "Minimize Timeline"}
             >
-              <Sliders className="w-3 h-3" />
+              {isTimelineCollapsed ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline text-xs">Timeline</span>
             </button>
           </div>
         </div>
@@ -6079,7 +6381,7 @@ export default function EditorPage() {
         {!isTimelineCollapsed && (
           <div className="flex-1 flex min-h-0 overflow-hidden bg-[#111218]">
             {/* COLUMN A: LEFT TRACK HEADERS (Width ~100px) */}
-            <div className="w-24 sm:w-28 flex-shrink-0 bg-[#161720] border-r border-[#262833] flex flex-col select-none text-slate-400 z-10">
+            <div className="w-32 sm:w-36 flex-shrink-0 bg-[#161720] border-r border-[#262833] flex flex-col select-none text-slate-400 z-10">
               {/* Ruler Spacer Header */}
               <div className="h-6 border-b border-[#262833] flex items-center px-2 text-[10px] font-mono text-slate-500">
                 <span>Tracks</span>
@@ -6093,6 +6395,7 @@ export default function EditorPage() {
                   <circle cx="8" cy="16" r="4" />
                   <circle cx="16" cy="16" r="4" />
                 </svg>
+                <span className="flex-1 ml-2 text-[10px]">Effects</span>
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
@@ -6116,6 +6419,7 @@ export default function EditorPage() {
               {/* Track 2 Header: Stickers */}
               <div className="h-7 border-b border-[#262833]/40 flex items-center justify-between px-2 text-slate-400">
                 <Star className="w-3 h-3 text-purple-400 flex-shrink-0" />
+                <span className="flex-1 ml-2 text-[10px]">Stickers</span>
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
@@ -6139,6 +6443,7 @@ export default function EditorPage() {
               {/* Track 3 Header: Subtitles / Text */}
               <div className="h-8 border-b border-[#262833]/40 flex items-center justify-between px-2 text-slate-400">
                 <span className="font-extrabold text-[11px] font-mono text-amber-400 tracking-tighter">TI</span>
+                <span className="flex-1 ml-2 text-[10px]">Subtitles</span>
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
@@ -6163,6 +6468,7 @@ export default function EditorPage() {
               <div className="h-14 border-b border-[#262833]/40 flex flex-col justify-between p-1.5 text-slate-400 relative">
                 <div className="flex items-center justify-between w-full">
                   <Video className="w-3 h-3 text-teal-400 flex-shrink-0" />
+                  <span className="flex-1 ml-2 text-[10px]">Video</span>
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
@@ -6224,6 +6530,7 @@ export default function EditorPage() {
               {/* Track 5 Header: Video Audio */}
               <div className="h-11 border-b border-[#262833]/40 flex items-center justify-between px-2 text-slate-400">
                 <Music className="w-3 h-3 text-teal-400 flex-shrink-0" />
+                <span className="flex-1 ml-2 text-[10px]">Video audio</span>
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
@@ -6245,9 +6552,10 @@ export default function EditorPage() {
                 </div>
               </div>
 
-              {/* Track 6 Header: BGM Audio */}
+              {/* Track 6 Header: Sound Effects & Music */}
               <div className="h-11 border-b border-[#262833]/40 flex items-center justify-between px-2 text-slate-400">
                 <Music className="w-3 h-3 text-blue-400 flex-shrink-0" />
+                <span className="flex-1 ml-2 text-[10px] text-blue-300">SFX / Music</span>
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
@@ -6321,7 +6629,9 @@ export default function EditorPage() {
                 const mediaId = e.dataTransfer.getData("mediaId");
                 if (mediaId) {
                   handleAddMediaToTimeline(mediaId, dropTime);
+                  return;
                 }
+                handleSoundLaneDrop(e);
               }}
               className="flex-1 overflow-x-auto relative bg-[#111218] cursor-pointer select-none"
             >
@@ -6726,9 +7036,60 @@ export default function EditorPage() {
                 )}
               </div>
 
-              {/* Track 6 Lane: BGM Music Waveform */}
-              <div className="h-11 border-b border-[#262833]/30 relative bg-[#172554]/20 flex flex-col justify-between overflow-hidden">
-                {/* Empty until user adds custom BGM music */}
+              {/* Track 6 Lane: Sound Effects & Music */}
+              <div
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "copy"; }}
+                onDrop={handleSoundLaneDrop}
+                className="h-11 border-b border-[#262833]/30 relative bg-[#172554]/20 overflow-hidden"
+              >
+                {soundEffectClips.length === 0 && (
+                  <div className="h-full flex items-center px-3 text-[9px] text-slate-600">ລາກສຽງຈາກແຖບ Audio ມາວາງທີ່ນີ້</div>
+                )}
+                {soundEffectClips.map((clip) => {
+                  const clipUrl = clip.audioUrl || customAssets.find((asset) => asset.id === clip.assetId)?.dataUrl;
+                  const leftPct = (clip.startTime / (duration || 15)) * 100;
+                  const widthPct = Math.max(2.5, (clip.duration / (duration || 15)) * 100);
+                  return (
+                    <div key={clip.id}>
+                      <div
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("application/x-saizup-audio-clip", clip.id);
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onClick={(e) => { e.stopPropagation(); setSelectedSoundEffectClipId(clip.id); setInspectorMode("audio"); setCurrentTime(clip.startTime); if (videoRef.current) videoRef.current.currentTime = clip.startTime; }}
+                        style={{ left: leftPct + "%", width: widthPct + "%", minWidth: "52px" }}
+                        title={clip.name + " · " + formatTime(clip.startTime) + " · ລາກເພື່ອຍ້າຍ"}
+                        className={"absolute top-1 h-9 rounded-md border px-1.5 flex items-center gap-1 text-[9px] font-semibold overflow-hidden cursor-grab active:cursor-grabbing " + (clip.kind === "myinstants" ? "bg-cyan-950/90 border-cyan-500/60 text-cyan-100" : clip.kind === "synthetic" ? "bg-violet-950/90 border-violet-500/60 text-violet-100" : "bg-blue-950/90 border-blue-500/60 text-blue-100")}
+                      >
+                        <Music className="w-3 h-3 shrink-0" />
+                        <span className="truncate flex-1">{clip.name}</span>
+                        <button
+                          type="button"
+                          data-no-scrub
+                          draggable={false}
+                          onClick={(e) => { e.stopPropagation(); setSoundEffectClips((previous) => previous.filter((item) => item.id !== clip.id)); if (selectedSoundEffectClipId === clip.id) setSelectedSoundEffectClipId(null); }}
+                          className="shrink-0 rounded px-1 text-white/60 hover:bg-rose-500/30 hover:text-rose-200"
+                          title="ລຶບຄລິບສຽງ"
+                        ><X className="w-3 h-3" /></button>
+                      </div>
+                      {clipUrl && (
+                        <audio
+                          ref={(element) => { timelineAudioRefs.current[clip.id] = element; }}
+                          src={clipUrl}
+                          preload="metadata"
+                          onLoadedMetadata={(e) => {
+                            const mediaDuration = e.currentTarget.duration;
+                            if (Number.isFinite(mediaDuration) && mediaDuration > 0 && Math.abs(mediaDuration - clip.duration) > 0.25) {
+                              setSoundEffectClips((previous) => previous.map((item) => item.id === clip.id ? { ...item, duration: mediaDuration } : item));
+                            }
+                          }}
+                          className="hidden"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               {/* CapCut Full-Height Playhead Vertical Needle */}

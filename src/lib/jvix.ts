@@ -7,7 +7,7 @@ const JVIX_BASE_URL = process.env.JVIX_BASE_URL || 'https://jvix.xyz';
 export const JVIX_API_KEY =
   process.env.JVIX_API_KEY ||
   process.env.BCEL_ONE_KEY ||
-  'jvixcloud_live_e50047095b0a768aa2df96822d529a865457428738949921';
+  '';
 
 export interface JvixGenerateResult {
   success: boolean;

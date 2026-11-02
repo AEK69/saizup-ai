@@ -139,11 +139,12 @@ export default function AdminDashboard() {
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   // Settings State
-  const [geminiKey, setGeminiKey] = useState("AQ.Ab8RN6KuOM88-WiH6LqPQ78brmzp9yut44wNx3E6iqn82VUtiw");
-  const [bcelKey, setBcelKey] = useState("jvixcloud_live_e50047095b0a768aa2df96822d529a865457428738949921");
+  // Server secrets belong in environment variables; never prefill or persist them in the browser.
+  const [geminiKey, setGeminiKey] = useState("");
+  const [bcelKey, setBcelKey] = useState("");
   const [merchantAccount, setMerchantAccount] = useState("010120000889977001");
   const [merchantName, setMerchantName] = useState("SAIZUP AI STUDIO");
-  const [activeModel, setActiveModel] = useState("Gemini 3.5 Flash Lite (ແນະນຳ)");
+  const [activeModel, setActiveModel] = useState("System-managed model routing");
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -893,11 +894,12 @@ export default function AdminDashboard() {
                 </div>
 
                 <div>
-                  <label className="text-slate-300 font-semibold block mb-1.5">Gemini 3.5 AI Key:</label>
+                  <label className="text-slate-300 font-semibold block mb-1.5">Gemini API Key (server environment only):</label>
                   <input
                     type="password"
                     value={geminiKey}
                     onChange={(e) => setGeminiKey(e.target.value)}
+                    placeholder="Configured in .env.local"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-400 font-mono text-[11px] focus:outline-none"
                   />
                 </div>

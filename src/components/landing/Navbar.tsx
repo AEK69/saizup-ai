@@ -1,14 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Sparkles, LayoutDashboard, Film, CreditCard, User, LogOut, Mail, CheckCircle2 } from "lucide-react";
+import { LayoutDashboard, LogOut } from "lucide-react";
 import AuthModal from "@/components/auth/AuthModal";
-
-const languages = [
-  { code: "lo", name: "ລາວ", flag: "🇱🇦" },
-  { code: "th", name: "ไทย", flag: "🇹🇭" },
-  { code: "en", name: "English", flag: "🇺🇸" },
-];
+import { landingLanguages, useLandingLanguage } from "@/components/landing/LanguageContext";
 
 interface NavLinkItem {
   href: string;
@@ -17,20 +12,23 @@ interface NavLinkItem {
   isSpecial?: boolean;
 }
 
-const navLinks: NavLinkItem[] = [
-  { href: "/subtitles", label: "Subtitle Studio", badge: "ໃໝ່" },
-  { href: "/editor", label: "Video Studio" },
-  { href: "#pricing", label: "ແພັກເກັດ & ເຕີມເຄຣດິດ" },
-  { href: "#features", label: "ຄຸນສົມບັດ" },
-];
-
 export default function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [currentLang, setCurrentLang] = useState(languages[0]);
   const [isLangOpen, setIsLangOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const { language, setLanguage } = useLandingLanguage();
+  const currentLang = landingLanguages.find((item) => item.code === language) ?? landingLanguages[0];
+  const navLinks: NavLinkItem[] = [
+    { href: "#pricing", label: language === "th" ? "แพ็กเกจ & เติมเครดิต" : language === "en" ? "Plans & credits" : "ແພັກເກັດ & ເຕີມເຄຣດິດ" },
+    { href: "#features", label: language === "th" ? "คุณสมบัติ" : language === "en" ? "Features" : "ຄຸນສົມບັດ" },
+  ];
+  const labels = language === "th"
+    ? { login: "เข้าสู่ระบบด้วย Google", logout: "ออกจากระบบ", addCredits: "เติมเครดิต", admin: "หลังบ้าน (Admin)", credits: "เครดิต", bcel: "เติม BCEL One" }
+    : language === "en"
+      ? { login: "Sign in with Google", logout: "Sign out", addCredits: "Add credits", admin: "Admin", credits: "credits", bcel: "Top up with BCEL One" }
+      : { login: "ເຂົ້າສູ່ລະບົບດ້ວຍ Google", logout: "ອອກຈາກລະບົບ", addCredits: "ເຕີມ", admin: "ຫຼັງບ້ານ (Admin)", credits: "ເຄຣດິດ", bcel: "ເຕີມ BCEL One" };
 
   useEffect(() => {
     const handleScroll = () => {
@@ -73,11 +71,7 @@ export default function Navbar() {
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <a href="/" className="flex items-center gap-2.5 group">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#12E8FF] via-[#5B8FFF] to-[#2E4A66] flex items-center justify-center shadow-md shadow-[#12E8FF]/20 group-hover:shadow-[#12E8FF]/40 transition-all">
-                <svg className="w-4 h-4 text-[#090C14]" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              </div>
+              <img src="/brand/saizup-symbol.png" alt="SAIZUP AI" className="h-10 w-10 object-contain drop-shadow-md transition-transform group-hover:scale-105" />
               <span className="text-lg font-bold tracking-tight">
                 <span className="text-white">SAIZUP</span>
                 <span className="text-[#12E8FF] ml-1">AI</span>
@@ -127,11 +121,11 @@ export default function Navbar() {
                 </button>
                 {isLangOpen && (
                   <div className="absolute right-0 mt-2 w-36 rounded-xl bg-[#1D1D1E] border border-[#353536] shadow-xl p-1 z-50">
-                    {languages.map((lang) => (
+                    {landingLanguages.map((lang) => (
                       <button
                         key={lang.code}
                         onClick={() => {
-                          setCurrentLang(lang);
+                          setLanguage(lang.code);
                           setIsLangOpen(false);
                         }}
                         className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs rounded-lg hover:bg-[#29292A] transition-colors ${
@@ -170,19 +164,19 @@ export default function Navbar() {
                       </span>
                     </div>
                     <p className="text-[10px] text-yellow-400 font-bold leading-tight mt-0.5">
-                      🪙 {currentUser.credits ?? 15} เครดิต
+                      🪙 {currentUser.credits ?? 15} {labels.credits}
                     </p>
                   </div>
                   <a
                     href="#pricing"
-                    title="ເຕີມເຄຣດິດ"
+                    title={labels.addCredits}
                     className="p-1 rounded-md text-[#12E8FF] hover:bg-[#12E8FF]/15 text-[11px] font-bold transition-colors ml-0.5"
                   >
-                    +ເຕີມ
+                    +{labels.addCredits}
                   </a>
                   <button
                     onClick={handleLogout}
-                    title="ອອກຈາກລະບົບ"
+                    title={labels.logout}
                     className="p-1 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800 transition-colors ml-0.5"
                   >
                     <LogOut className="w-3.5 h-3.5" />
@@ -211,7 +205,7 @@ export default function Navbar() {
                       d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                     />
                   </svg>
-                  <span>ເຂົ້າສູ່ລະບົບດ້ວຍ Google</span>
+                  <span>{labels.login}</span>
                 </button>
               )}
 
@@ -223,18 +217,10 @@ export default function Navbar() {
                   title="ລະບົບຫຼັງບ້ານ (ສະເພາະເຈົ້າຂອງຮ້ານ)"
                 >
                   <LayoutDashboard className="w-3.5 h-3.5 text-[#12E8FF]" />
-                  <span>ຫຼັງບ້ານ (Admin)</span>
+                  <span>{labels.admin}</span>
                 </a>
               )}
 
-              {/* CTA Button */}
-              <a
-                href="/editor"
-                className="capcut-btn-cyan text-[#090C14] px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5"
-              >
-                <Film className="w-3.5 h-3.5 text-[#090C14]" />
-                <span>Video Studio</span>
-              </a>
             </div>
 
             {/* Mobile Menu Button */}
@@ -274,7 +260,7 @@ export default function Navbar() {
                     )}
                     <div>
                       <p className="text-xs text-white font-medium">{currentUser.email}</p>
-                      <p className="text-[10px] text-cyan-400 font-semibold">{currentUser.credits || 50} Credits</p>
+                      <p className="text-[10px] text-cyan-400 font-semibold">{currentUser.credits || 50} {labels.credits}</p>
                     </div>
                   </div>
                   <button
@@ -282,7 +268,7 @@ export default function Navbar() {
                     className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 px-2 py-1 rounded bg-red-500/10"
                   >
                     <LogOut className="w-3 h-3" />
-                    <span>ອອກ</span>
+                    <span>{labels.logout}</span>
                   </button>
                 </div>
               ) : (
@@ -311,7 +297,7 @@ export default function Navbar() {
                       d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                     />
                   </svg>
-                  <span>ເຂົ້າສູ່ລະບົບດ້ວຍ Google</span>
+                  <span>{labels.login}</span>
                 </button>
               )}
 
@@ -331,14 +317,14 @@ export default function Navbar() {
                     href="/admin"
                     className="flex-1 py-2.5 text-center text-xs font-semibold rounded-xl bg-[#12E8FF]/15 text-[#12E8FF] border border-[#12E8FF]/30"
                   >
-                    ລະບົບຫຼັງບ້ານ (Admin)
+                    {labels.admin}
                   </a>
                 )}
                 <a
                   href="#pricing"
                   className="flex-1 py-2.5 text-center text-xs font-semibold rounded-xl gradient-btn text-white"
                 >
-                  ເຕີມ BCEL One
+                  {labels.bcel}
                 </a>
               </div>
             </div>

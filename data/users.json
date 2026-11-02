@@ -1,5 +1,153 @@
 [
   {
+    "id": "usr_1793583901659",
+    "name": "Aek Xayyabed",
+    "email": "aektrader8@gmail.com",
+    "avatar": "https://lh3.googleusercontent.com/a/ACg8ocLD7SjfNLArGwcjDgM5H_5gtX-7h9DNKzobPpRZZv_-B4PBsw=s96-c",
+    "picture": "https://lh3.googleusercontent.com/a/ACg8ocLD7SjfNLArGwcjDgM5H_5gtX-7h9DNKzobPpRZZv_-B4PBsw=s96-c",
+    "provider": "google",
+    "credits": 755,
+    "dailyCreditsUsed": 250,
+    "lastDailyCreditReset": "2026-11-02",
+    "plan": "Pro Creator Pass",
+    "billingCycle": "monthly",
+    "trialDaysRemaining": 7,
+    "status": "active",
+    "createdAt": "2026-11-02T01:45:01.659Z",
+    "lastLoginAt": "2026-11-02T07:41:44.196Z",
+    "totalVideosGenerated": 15,
+    "totalSpentLAK": 0,
+    "isOwner": false,
+    "activityHistory": [
+      {
+        "id": "act_1793629436026",
+        "action": "ໃຊ້ງານ AI Engine V2 [Base 10 + ຄວາມຍາວ 2 + ພາສາ/ແປ 0 = 12 Credits] (-12 ເຄຣດິດ)",
+        "detail": "ຖອດສຽງຊັບໄຕເຕິລ (V2, ຄວາມຍາວ 53 ວິ, Base 10 + ຄວາມຍາວ 2 + ພາສາ/ແປ 0 = 12 Credits) | ເຄຣດິດຄົງເຫຼືອ: 755",
+        "timestamp": "2026-11-02T14:23:56.026Z"
+      },
+      {
+        "id": "act_1793629161004",
+        "action": "ໃຊ້ງານ AI Engine V3 [Base 20 + ຄວາມຍາວ 2 + ພາສາ/ແປ 0 = 22 Credits] (-22 ເຄຣດິດ)",
+        "detail": "ຖອດສຽງຊັບໄຕເຕິລ (V3, ຄວາມຍາວ 53 ວິ, Base 20 + ຄວາມຍາວ 2 + ພາສາ/ແປ 0 = 22 Credits) | ເຄຣດິດຄົງເຫຼືອ: 767",
+        "timestamp": "2026-11-02T14:19:21.004Z"
+      },
+      {
+        "id": "act_1793605647111",
+        "action": "ໃຊ້ງານ AI Engine V3 [Base 20 + ຄວາມຍາວ 2 + ພາສາ/ແປ 0 = 22 Credits] (-22 ເຄຣດິດ)",
+        "detail": "ຖອດສຽງຊັບໄຕເຕິລ (V3, ຄວາມຍາວ 60 ວິ, Base 20 + ຄວາມຍາວ 2 + ພາສາ/ແປ 0 = 22 Credits) | ເຄຣດິດຄົງເຫຼືອ: 789",
+        "timestamp": "2026-11-02T07:47:27.111Z"
+      },
+      {
+        "id": "act_1793605345647",
+        "action": "ໃຊ້ງານ AI Engine V3 [Base 20 + ຄວາມຍາວ 2 + ພາສາ/ແປ 0 = 22 Credits] (-22 ເຄຣດິດ)",
+        "detail": "ຖອດສຽງຊັບໄຕເຕິລ (V3, ຄວາມຍາວ 60 ວິ, Base 20 + ຄວາມຍາວ 2 + ພາສາ/ແປ 0 = 22 Credits) | ເຄຣດິດຄົງເຫຼືອ: 811",
+        "timestamp": "2026-11-02T07:42:25.647Z"
+      },
+      {
+        "id": "act_1793605304196",
+        "action": "ເຂົ້າສູ່ລະບົບ (Login)",
+        "detail": "ເຂົ້າສູ່ລະບົບຜ່ານ google",
+        "timestamp": "2026-11-02T07:41:44.196Z"
+      },
+      {
+        "id": "act_1793594784356",
+        "action": "ໃຊ້ງານ AI Engine V3 [Base 20 + ຄວາມຍາວ 2 + ພາສາ/ແປ 0 = 22 Credits] (-22 ເຄຣດິດ)",
+        "detail": "ຖອດສຽງຊັບໄຕເຕິລ (V3, ຄວາມຍາວ 53 ວິ, Base 20 + ຄວາມຍາວ 2 + ພາສາ/ແປ 0 = 22 Credits) | ເຄຣດິດຄົງເຫຼືອ: 833",
+        "timestamp": "2026-11-02T04:46:24.356Z"
+      },
+      {
+        "id": "act_1793590841574",
+        "action": "ໃຊ້ງານ AI Engine V3 [Base 20 + ຄວາມຍາວ 0 + ພາສາ/ແປ 0 = 20 Credits] (-20 ເຄຣດິດ)",
+        "detail": "ຖອດສຽງຊັບໄຕເຕິລ (V3, ຄວາມຍາວ 11 ວິ, Base 20 + ຄວາມຍາວ 0 + ພາສາ/ແປ 0 = 20 Credits) | ເຄຣດິດຄົງເຫຼືອ: 855",
+        "timestamp": "2026-11-02T03:40:41.574Z"
+      },
+      {
+        "id": "act_1793590735412",
+        "action": "ໃຊ້ງານ AI Engine V3 [Base 20 + ຄວາມຍາວ 0 + ພາສາ/ແປ 0 = 20 Credits] (-20 ເຄຣດິດ)",
+        "detail": "ຖອດສຽງຊັບໄຕເຕິລ (V3, ຄວາມຍາວ 11 ວິ, Base 20 + ຄວາມຍາວ 0 + ພາສາ/ແປ 0 = 20 Credits) | ເຄຣດິດຄົງເຫຼືອ: 875",
+        "timestamp": "2026-11-02T03:38:55.412Z"
+      },
+      {
+        "id": "act_1793588694432",
+        "action": "ໃຊ້ງານ AI Engine V3 [Base 20 + ຄວາມຍາວ 2 + ພາສາ/ແປ 0 = 22 Credits] (-22 ເຄຣດິດ)",
+        "detail": "ຖອດສຽງຊັບໄຕເຕິລ (V3, ຄວາມຍາວ 53 ວິ, Base 20 + ຄວາມຍາວ 2 + ພາສາ/ແປ 0 = 22 Credits) | ເຄຣດິດຄົງເຫຼືອ: 895",
+        "timestamp": "2026-11-02T03:04:54.432Z"
+      },
+      {
+        "id": "act_1793587864883",
+        "action": "ໃຊ້ງານ AI Engine V3 [Base 20 + ຄວາມຍາວ 2 + ພາສາ/ແປ 0 = 22 Credits] (-22 ເຄຣດິດ)",
+        "detail": "ຖອດສຽງຊັບໄຕເຕິລ (V3, ຄວາມຍາວ 53 ວິ, Base 20 + ຄວາມຍາວ 2 + ພາສາ/ແປ 0 = 22 Credits) | ເຄຣດິດຄົງເຫຼືອ: 917",
+        "timestamp": "2026-11-02T02:51:04.883Z"
+      },
+      {
+        "id": "act_1793586970574",
+        "action": "ໃຊ້ງານ AI Engine V1 [Base 5 + ຄວາມຍາວ 2 + ພາສາ/ແປ 0 = 7 Credits] (-7 ເຄຣດິດ)",
+        "detail": "ຖອດສຽງຊັບໄຕເຕິລ (V1, ຄວາມຍາວ 53 ວິ, Base 5 + ຄວາມຍາວ 2 + ພາສາ/ແປ 0 = 7 Credits) | ເຄຣດິດຄົງເຫຼືອ: 939",
+        "timestamp": "2026-11-02T02:36:10.574Z"
+      },
+      {
+        "id": "act_1793586950373",
+        "action": "ໃຊ້ງານ AI Engine V3 [Base 20 + ຄວາມຍາວ 2 + ພາສາ/ແປ 0 = 22 Credits] (-22 ເຄຣດິດ)",
+        "detail": "ຖອດສຽງຊັບໄຕເຕິລ (V3, ຄວາມຍາວ 53 ວິ, Base 20 + ຄວາມຍາວ 2 + ພາສາ/ແປ 0 = 22 Credits) | ເຄຣດິດຄົງເຫຼືອ: 946",
+        "timestamp": "2026-11-02T02:35:50.373Z"
+      },
+      {
+        "id": "act_1793586604565",
+        "action": "ໃຊ້ງານ AI Engine V1 [Base 5 + ຄວາມຍາວ 2 + ພາສາ/ແປ 0 = 7 Credits] (-7 ເຄຣດິດ)",
+        "detail": "ຖອດສຽງຊັບໄຕເຕິລ (V1, ຄວາມຍາວ 53 ວິ, Base 5 + ຄວາມຍາວ 2 + ພາສາ/ແປ 0 = 7 Credits) | ເຄຣດິດຄົງເຫຼືອ: 968",
+        "timestamp": "2026-11-02T02:30:04.565Z"
+      },
+      {
+        "id": "act_1793586279142",
+        "action": "ໃຊ້ງານ AI Engine V3 [Base 20 + ຄວາມຍາວ 0 + ພາສາ/ແປ 0 = 20 Credits] (-20 ເຄຣດິດ)",
+        "detail": "ຖອດສຽງຊັບໄຕເຕິລ (V3, ຄວາມຍາວ 10 ວິ, Base 20 + ຄວາມຍາວ 0 + ພາສາ/ແປ 0 = 20 Credits) | ເຄຣດິດຄົງເຫຼືອ: 975",
+        "timestamp": "2026-11-02T02:24:39.142Z"
+      },
+      {
+        "id": "act_1793585793204",
+        "action": "ໃຊ້ງານ AI Engine V1 [Base 5 + ຄວາມຍາວ 0 + ພາສາ/ແປ 0 = 5 Credits] (-5 ເຄຣດິດ)",
+        "detail": "ຖອດສຽງຊັບໄຕເຕິລ (V1, ຄວາມຍາວ 10 ວິ, Base 5 + ຄວາມຍາວ 0 + ພາສາ/ແປ 0 = 5 Credits) | ເຄຣດິດຄົງເຫຼືອ: 995",
+        "timestamp": "2026-11-02T02:16:33.204Z"
+      },
+      {
+        "id": "act_1793585203165",
+        "action": "ແກ້ໄຂຂໍ້ມູນໂດຍເຈົ້າຂອງຮ້ານ",
+        "detail": "ແກ້ໄຂເຄຣດິດເປັນ 1000, ແພັກເກັດ: Pro Creator Pass",
+        "timestamp": "2026-11-02T02:06:43.165Z"
+      },
+      {
+        "id": "act_1793585152277",
+        "action": "ແກ້ໄຂຂໍ້ມູນໂດຍເຈົ້າຂອງຮ້ານ",
+        "detail": "Quick adjust +100 credits (New total: 310)",
+        "timestamp": "2026-11-02T02:05:52.277Z"
+      },
+      {
+        "id": "act_1793585149763",
+        "action": "ແກ້ໄຂຂໍ້ມູນໂດຍເຈົ້າຂອງຮ້ານ",
+        "detail": "Quick adjust +100 credits (New total: 210)",
+        "timestamp": "2026-11-02T02:05:49.763Z"
+      },
+      {
+        "id": "act_1793585149472",
+        "action": "ແກ້ໄຂຂໍ້ມູນໂດຍເຈົ້າຂອງຮ້ານ",
+        "detail": "Quick adjust +100 credits (New total: 110)",
+        "timestamp": "2026-11-02T02:05:49.472Z"
+      },
+      {
+        "id": "act_1793584331468",
+        "action": "ໃຊ້ງານ AI Engine V1 [Base 5 + ຄວາມຍາວ 0 + ພາສາ/ແປ 0 = 5 Credits] (-5 ເຄຣດິດ)",
+        "detail": "ຖອດສຽງຊັບໄຕເຕິລ (V1, ຄວາມຍາວ 10 ວິ, Base 5 + ຄວາມຍາວ 0 + ພາສາ/ແປ 0 = 5 Credits) | ເຄຣດິດຄົງເຫຼືອ: 10",
+        "timestamp": "2026-11-02T01:52:11.468Z"
+      },
+      {
+        "id": "act_1793583901659",
+        "action": "ລົງທະບຽນໃໝ່ (Register)",
+        "detail": "ເຂົ້າໃຊ້ງານຄັ້ງທຳອິດຜ່ານ google (ຮັບ 15 Credits ຟຣີ/ມື້, ຄລິບ 30 ວິ)",
+        "timestamp": "2026-11-02T01:45:01.659Z"
+      }
+    ]
+  },
+  {
     "id": "usr_1793419287872",
     "name": "Aekaphon XAYYABED",
     "email": "kobx20022@gmail.com",
@@ -8,7 +156,7 @@
     "provider": "google",
     "credits": 15,
     "dailyCreditsUsed": 0,
-    "lastDailyCreditReset": "2026-10-31",
+    "lastDailyCreditReset": "2026-11-02",
     "plan": "Free",
     "billingCycle": "none",
     "trialDaysRemaining": 7,

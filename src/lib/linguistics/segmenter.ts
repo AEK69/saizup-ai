@@ -23,6 +23,33 @@ export interface SubtitleBlock {
   hasCodeSwitching?: boolean;
 }
 
+export interface ASSExportStyle {
+  fontName?: string;
+  fontSize?: number;
+  primaryColor?: string;
+  secondaryColor?: string;
+  outlineColor?: string;
+  backgroundColor?: string;
+  backgroundMode?: "none" | "solid" | "translucent";
+  backgroundOpacity?: number;
+  backgroundPadding?: number;
+  outlineWidth?: number;
+  shadow?: number;
+  marginV?: number;
+  animation?: "static" | "karaoke" | "word-by-word" | "bounce" | "typewriter" | "fade" | "highlight";
+  glow?: number;
+}
+
+function hexToASSColor(hex: string, opacity = 1): string {
+  const value = hex.replace("#", "");
+  const normalized = value.length === 3 ? value.split("").map((part) => part + part).join("") : value;
+  const red = Number.parseInt(normalized.slice(0, 2), 16);
+  const green = Number.parseInt(normalized.slice(2, 4), 16);
+  const blue = Number.parseInt(normalized.slice(4, 6), 16);
+  const alpha = Math.round((1 - Math.max(0, Math.min(1, opacity))) * 255);
+  return `&H${alpha.toString(16).padStart(2, "0")}${blue.toString(16).padStart(2, "0")}${green.toString(16).padStart(2, "0")}${red.toString(16).padStart(2, "0")}`.toUpperCase();
+}
+
 // Contextual Emoji dictionary for auto-emoji suggestions
 const CONTEXTUAL_EMOJIS: Record<string, string> = {
   // Lao
@@ -271,7 +298,19 @@ export function calculateCPS(text: string, durationSec: number): number {
  * 6. Export to Advanced SubStation Alpha (.ASS) Format
  * Includes karaoke tags {\k<centiseconds>} for Aegisub, CapCut, Premiere, and FFmpeg!
  */
-export function exportToASS(subtitles: SubtitleBlock[], title: string = 'SAIZUP Karaoke'): string {
+export function exportToASS(subtitles: SubtitleBlock[], title: string = 'SAIZUP Karaoke', style: ASSExportStyle = {}): string {
+  const fontName = (style.fontName || "Noto Sans Lao").replace(/[,{}`\\]/g, " ").trim() || "Noto Sans Lao";
+  const fontSize = Math.max(12, Math.round(style.fontSize || 54));
+  const backgroundMode = style.backgroundMode || "none";
+  const backOpacity = backgroundMode === "solid" ? 1 : backgroundMode === "translucent" ? style.backgroundOpacity ?? 0.58 : 0;
+  const borderStyle = backgroundMode === "none" ? 1 : 3;
+  const outline = backgroundMode === "none" ? Math.max(0, Math.round(style.outlineWidth ?? fontSize * 0.07)) : Math.max(0, Math.round(style.backgroundPadding ?? 10));
+  const shadow = Math.max(0, Math.round(style.shadow ?? 2));
+  const marginV = Math.max(0, Math.round(style.marginV ?? 240));
+  const primaryColor = hexToASSColor(style.primaryColor || "#FFFFFF");
+  const secondaryColor = hexToASSColor(style.secondaryColor || "#FFE01B");
+  const outlineColor = hexToASSColor(style.outlineColor || "#000000");
+  const backColor = hexToASSColor(style.backgroundColor || "#000000", backOpacity);
   const formatTimeASS = (sec: number) => {
     const hrs = Math.floor(sec / 3600);
     const mins = Math.floor((sec % 3600) / 60);
@@ -290,7 +329,7 @@ PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: CapCutKaraoke,Noto Sans Lao,54,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0,100,100,1,0,1,4,2,2,40,40,240,1
+Style: CapCutKaraoke,${fontName},${fontSize},${primaryColor},${secondaryColor},${outlineColor},${backColor},1,0,0,0,100,100,0,0,${borderStyle},${outline},${shadow},2,40,40,${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -302,17 +341,27 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
     // Build Karaoke {\k<centiseconds>} text
     let karaokeText = '';
-    if (sub.words && sub.words.length > 0) {
+    if (sub.words && sub.words.length > 0 && ["karaoke", "word-by-word", "highlight", "bounce", "typewriter"].includes(style.animation || "karaoke")) {
       sub.words.forEach((w) => {
         const csDuration = Math.max(10, Math.round((w.endSec - w.startSec) * 100));
-        karaokeText += `{\\k${csDuration}}${w.text} `;
+        const bounceTags = style.animation === "bounce"
+          ? `\\t(0,${Math.max(1, Math.round(csDuration * 0.45))},\\fscx110\\fscy110)\\t(${Math.max(1, Math.round(csDuration * 0.45))},${csDuration},\\fscx100\\fscy100)`
+          : "";
+        if (style.animation === "word-by-word") {
+          const revealMs = Math.max(0, Math.round((w.startSec - sub.time) * 1000));
+          karaokeText += `{\\alpha&HFF&\\t(${revealMs},${revealMs + 40},\\alpha&H00&)}${w.text} `;
+        } else {
+          karaokeText += `{\\k${csDuration}${bounceTags}}${w.text} `;
+        }
       });
       karaokeText = karaokeText.trim();
     } else {
       karaokeText = sub.text;
     }
 
-    ass += `Dialogue: 0,${startStr},${endStr},CapCutKaraoke,,0,0,0,,${karaokeText}\n`;
+    const fadeTag = style.animation === "fade" ? "{\\fad(250,250)}" : "";
+    const glowTag = style.glow ? `{\\blur${Math.max(1, Math.round(style.glow))}}` : "";
+    ass += `Dialogue: 0,${startStr},${endStr},CapCutKaraoke,,0,0,0,,${fadeTag}${glowTag}${karaokeText}\n`;
   });
 
   return ass;

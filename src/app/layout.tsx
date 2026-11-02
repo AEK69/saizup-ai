@@ -6,9 +6,9 @@ export const metadata: Metadata = {
   description:
     "AI-powered Lao (ພາສາລາວ) & Thai subtitle generator, auto-cut, and styling studio with CapCut design system.",
   icons: {
-    icon: "/icon.svg",
-    shortcut: "/icon.svg",
-    apple: "/icon.svg",
+    icon: "/brand/saizup-favicon.png",
+    shortcut: "/brand/saizup-favicon.png",
+    apple: "/brand/saizup-favicon.png",
   },
 };
 
@@ -20,8 +20,8 @@ export default function RootLayout({
   return (
     <html lang="lo" className="dark">
       <head>
-        <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-        <link rel="apple-touch-icon" href="/icon.svg" />
+        <link rel="icon" href="/brand/saizup-favicon.png" type="image/png" />
+        <link rel="apple-touch-icon" href="/brand/saizup-favicon.png" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link

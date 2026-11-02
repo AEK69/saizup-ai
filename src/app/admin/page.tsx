@@ -1,5 +1,6 @@
 import AdminDashboard from "@/components/admin/AdminDashboard";
 import Navbar from "@/components/landing/Navbar";
+import { LandingLanguageProvider } from "@/components/landing/LanguageContext";
 
 export const metadata = {
   title: "SAIZUP AI - Backoffice & Sales Monitor (ລະບົບຫຼັງບ້ານ)",
@@ -8,9 +9,11 @@ export const metadata = {
 
 export default function AdminPage() {
   return (
-    <main className="min-h-screen bg-[#07080d]">
-      <Navbar />
-      <AdminDashboard />
-    </main>
+    <LandingLanguageProvider>
+      <main className="min-h-screen bg-[#07080d]">
+        <Navbar />
+        <AdminDashboard />
+      </main>
+    </LandingLanguageProvider>
   );
 }

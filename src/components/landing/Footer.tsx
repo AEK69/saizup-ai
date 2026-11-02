@@ -1,4 +1,16 @@
+"use client";
+
+import { useLandingLanguage } from "@/components/landing/LanguageContext";
+
+const footerCopy = {
+  lo: { description: "ແພລດຟອມຕັດຕໍ່ວິດີໂອ AI ສຳລັບຄຣີເອເຕີຄລິບສັ້ນ ທີ່ຮອງຮັບ ລາວ, ໄທ ແລະ ອັງກິດ.", product: "ຜະລິດຕະພັນ", company: "ບໍລິສັດ", legal: "ນະໂຍບາຍ", features: "ຄຸນສົມບັດ", plans: "ແພັກເກັດ", companyLinks: ["ກ່ຽວກັບເຮົາ", "CapCut Integration", "ຕິດຕໍ່ຝ່າຍຊ່ວຍເຫຼືອ", "ຮ່ວມງານ"], legalLinks: ["ນະໂຍບາຍສ່ວນຕົວ", "ເງື່ອນໄຂບໍລິການ", "ນະໂຍບາຍ Cookies", "ຄວາມປອດໄພເນື້ອຫາ"] },
+  th: { description: "แพลตฟอร์มตัดต่อวิดีโอ AI สำหรับครีเอเตอร์คลิปสั้น รองรับลาว ไทย และอังกฤษ.", product: "ผลิตภัณฑ์", company: "บริษัท", legal: "กฎหมาย", features: "คุณสมบัติ", plans: "แพ็กเกจ", companyLinks: ["เกี่ยวกับเรา", "CapCut Integration", "ติดต่อฝ่ายช่วยเหลือ", "ร่วมงานกับเรา"], legalLinks: ["นโยบายความเป็นส่วนตัว", "ข้อกำหนดการใช้งาน", "นโยบายคุกกี้", "ความปลอดภัยของเนื้อหา"] },
+  en: { description: "An AI video-editing platform for short-form creators, with support for Lao, Thai, and English.", product: "Product", company: "Company", legal: "Legal", features: "Features", plans: "Plans", companyLinks: ["About us", "CapCut integration", "Contact support", "Careers"], legalLinks: ["Privacy policy", "Terms of service", "Cookie policy", "Content safety"] },
+} as const;
+
 export default function Footer() {
+  const { language } = useLandingLanguage();
+  const copy = footerCopy[language];
   return (
     <footer className="border-t border-[#262833] bg-[#0A0B0E] font-sans">
       <div className="max-w-7xl mx-auto px-5 lg:px-8 py-16">
@@ -6,29 +18,25 @@ export default function Footer() {
           {/* Brand */}
           <div className="md:col-span-1">
             <a href="/" className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#12E8FF] via-[#5B8FFF] to-[#2E4A66] flex items-center justify-center">
-                <svg className="w-4 h-4 text-[#090C14]" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              </div>
+              <img src="/brand/saizup-symbol.png" alt="SAIZUP AI" className="h-11 w-11 object-contain" />
               <span className="text-lg font-bold font-inter">
                 <span className="text-white">SAIZUP</span>
                 <span className="text-[#12E8FF] ml-1">AI</span>
               </span>
             </a>
             <p className="text-sm text-slate-400 leading-relaxed font-normal">
-              AI-powered video editing platform for short-form content creators. Built with CapCut design principles for Lao, Thai, and English creators.
+              {copy.description}
             </p>
           </div>
 
           {/* Product Links */}
           <div>
-            <h4 className="text-sm font-bold text-white mb-4 font-inter">Product</h4>
+            <h4 className="text-sm font-bold text-white mb-4 font-inter">{copy.product}</h4>
             <ul className="space-y-2.5">
               {[
-                { label: "ຄຸນສົມບັດ (Features)", href: "#features" },
+                { label: copy.features, href: "#features" },
                 { label: "CapCut Video Studio 9:16", href: "/editor" },
-                { label: "ແພັກເກັດລາຄາ (BCEL One)", href: "#pricing" },
+                { label: `${copy.plans} (BCEL One)`, href: "#pricing" },
               ].map((item) => (
                 <li key={item.label}>
                   <a href={item.href} className="text-sm text-slate-400 hover:text-[#12E8FF] transition-colors">
@@ -41,9 +49,9 @@ export default function Footer() {
 
           {/* Company Links */}
           <div>
-            <h4 className="text-sm font-bold text-white mb-4 font-inter">Company</h4>
+            <h4 className="text-sm font-bold text-white mb-4 font-inter">{copy.company}</h4>
             <ul className="space-y-2.5">
-              {["About Us", "CapCut Integration", "Contact Support", "Careers"].map((item) => (
+              {copy.companyLinks.map((item) => (
                 <li key={item}>
                   <a href="#" className="text-sm text-slate-400 hover:text-[#12E8FF] transition-colors">
                     {item}
@@ -55,9 +63,9 @@ export default function Footer() {
 
           {/* Legal Links */}
           <div>
-            <h4 className="text-sm font-bold text-white mb-4 font-inter">Legal</h4>
+            <h4 className="text-sm font-bold text-white mb-4 font-inter">{copy.legal}</h4>
             <ul className="space-y-2.5">
-              {["Privacy Policy", "Terms of Service", "Cookie Policy", "Content Safety"].map((item) => (
+              {copy.legalLinks.map((item) => (
                 <li key={item}>
                   <a href="#" className="text-sm text-slate-400 hover:text-[#12E8FF] transition-colors">
                     {item}
@@ -75,7 +83,7 @@ export default function Footer() {
           </p>
           <div className="flex items-center gap-6">
             <span>
-              Powered by Google Gemini 2.0 & BCEL One
+              Powered by SAIZUP AI & BCEL One
             </span>
           </div>
         </div>
