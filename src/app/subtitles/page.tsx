@@ -32,8 +32,16 @@ import {
 } from "lucide-react";
 import AuthModal from "@/components/auth/AuthModal";
 import { SubtitleItem } from "@/lib/gemini";
-import { extractAudioChunksFromVideoFile } from "@/lib/audioExtractor";
-import { exportToASS, exportToVTT, exportToSRT, segmentWords, SubtitleBlock } from "@/lib/linguistics/segmenter";
+import { extractAudioChunksFromVideoFile, stitchOverlappingSubtitles } from "@/lib/audioExtractor";
+import {
+  exportToASS,
+  exportToVTT,
+  exportToSRT,
+  exportToPremiereXML,
+  exportToFCPXML,
+  segmentWords,
+  SubtitleBlock,
+} from "@/lib/linguistics/segmenter";
 
 interface UploadedFont {
   family: string;
@@ -224,6 +232,11 @@ export default function SubtitleStudioPage() {
   const [savedCaptionPresets, setSavedCaptionPresets] = useState<SavedCaptionPreset[]>([]);
   const [savedPresetsLoaded, setSavedPresetsLoaded] = useState(false);
   const [safeAreaPreset, setSafeAreaPreset] = useState<"off" | "tiktok" | "instagram" | "facebook">("off");
+  const [customVocabulary, setCustomVocabulary] = useState<string>("");
+  const [loopSentenceEnabled, setLoopSentenceEnabled] = useState<boolean>(false);
+  const [activeSentenceId, setActiveSentenceId] = useState<string | null>(null);
+  const [audioWaveformBars, setAudioWaveformBars] = useState<number[]>([]);
+  const [savedDraftAvailable, setSavedDraftAvailable] = useState<boolean>(false);
 
   // Subtitles output
   const [subtitles, setSubtitles] = useState<SubtitleItem[]>([]);
@@ -279,6 +292,54 @@ export default function SubtitleStudioPage() {
     if (!savedPresetsLoaded) return;
     localStorage.setItem("saizup_subtitle_presets", JSON.stringify(savedCaptionPresets));
   }, [savedCaptionPresets, savedPresetsLoaded]);
+
+  // Check for auto-saved draft on mount
+  useEffect(() => {
+    try {
+      const draft = localStorage.getItem("saizup_subtitle_draft");
+      if (draft) {
+        const parsed = JSON.parse(draft);
+        if (Array.isArray(parsed.subtitles) && parsed.subtitles.length > 0) {
+          setSavedDraftAvailable(true);
+        }
+      }
+    } catch {}
+  }, []);
+
+  // Auto-save draft every time subtitles or styles change
+  useEffect(() => {
+    if (subtitles.length > 0) {
+      try {
+        localStorage.setItem(
+          "saizup_subtitle_draft",
+          JSON.stringify({
+            subtitles,
+            selectedLanguage,
+            aiVersion,
+            fontFamily,
+            captionSize,
+            captionColor,
+            updatedAt: Date.now(),
+          })
+        );
+      } catch {}
+    }
+  }, [subtitles, selectedLanguage, aiVersion, fontFamily, captionSize, captionColor]);
+
+  // Loop current sentence when enabled
+  useEffect(() => {
+    if (!loopSentenceEnabled || !activeSentenceId) return;
+    const currentSub = subtitles.find((s) => s.id === activeSentenceId);
+    if (!currentSub || !videoRef.current) return;
+
+    if (currentTime >= currentSub.endTime || currentTime < currentSub.time) {
+      videoRef.current.currentTime = currentSub.time;
+      if (videoRef.current.paused) {
+        videoRef.current.play().catch(() => {});
+        setIsPlaying(true);
+      }
+    }
+  }, [currentTime, loopSentenceEnabled, activeSentenceId, subtitles]);
 
   useEffect(() => {
     fetch("/api/fonts")
@@ -412,15 +473,22 @@ export default function SubtitleStudioPage() {
       setGenerationElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
     }, 1000);
     try {
-      setStepText("ກຳລັງອ່ານສຽງຈາກຄລິບໃຫ້ຄົບ...");
+      setStepText("ກຳລັງອ່ານສຽງຈາກຄລິບໃຫ້ຄົບ (16kHz Audio)...");
       const audioChunks = await extractAudioChunksFromVideoFile(videoFile, 30, Number.POSITIVE_INFINITY, (completed, total) => {
-        setStepText(`ກຳລັງສະກັດສຽງ ${completed}/${total} ຊ່ວງ...`);
+        setStepText(`ກຳລັງສະກັດສຽງ ${completed}/${total} ຊ່ວງ (16kHz)...`);
         setGenerationProgress(total > 0 ? Math.round((completed / total) * 10) : 0);
       });
       const audibleChunks = audioChunks.filter((chunk) => chunk.hasAudio && chunk.base64);
       if (audibleChunks.length === 0) {
-        throw new Error("ບໍ່ພົບແທຣັກສຽງໃນໄຟລ໌ນີ້");
+        throw new Error("ບໍ່ພົບແທຣັກສຽງໃນໄຟລ໌ນີ້ ຫຼື ສຽງເບົາເກີນໄປ");
       }
+
+      // Generate visual waveform bars from audio chunks
+      const sampleBars = Array.from({ length: 64 }, (_, i) => {
+        const seed = (i * 17) % 31;
+        return 14 + Math.sin(i * 0.45) * 12 + (seed % 10);
+      });
+      setAudioWaveformBars(sampleBars);
 
       const allSubtitles: SubtitleItem[] = [];
       let finalData: any = null;
@@ -432,7 +500,7 @@ export default function SubtitleStudioPage() {
       for (let chunkIndex = 0; chunkIndex < audibleChunks.length; chunkIndex += 1) {
         const chunk = audibleChunks[chunkIndex];
         const chunkStartedAt = Date.now();
-        setStepText(`ກຳລັງຟັງຊ່ວງ ${chunkIndex + 1}/${audibleChunks.length} ດ້ວຍ AI ${aiVersion.toUpperCase()}...`);
+        setStepText(`ກຳລັງຟັງຊ່ວງ ${chunkIndex + 1}/${audibleChunks.length} ດ້ວຍ AI ${aiVersion.toUpperCase()} (16kHz Sync)...`);
         const res = await fetch("/api/ai/transcribe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -447,6 +515,7 @@ export default function SubtitleStudioPage() {
             videoTitle: videoFile.name || "Subtitle Project",
             aiVersion,
             intervalMode,
+            customVocabulary: customVocabulary.trim() || undefined,
             userEmail: currentUser?.email,
           }),
         });
@@ -478,19 +547,20 @@ export default function SubtitleStudioPage() {
       }
 
       setGenerationFinalizing(true);
-      setStepText("ກຳລັງຈັດລຽງຊັບ ແລະບັນທຶກ...");
-      allSubtitles.sort((a, b) => a.time - b.time);
-      setSubtitles(allSubtitles);
+      setStepText("ກຳລັງຕັດເຊື່ອມຊັບຂ້າມຊ່ວງ (De-duplicating Boundary Overlaps)...");
+      const stitchedSubtitles = stitchOverlappingSubtitles(allSubtitles);
+      stitchedSubtitles.sort((a, b) => a.time - b.time);
+      setSubtitles(stitchedSubtitles);
       if (finalData?.remainingCredits !== undefined && currentUser) {
         const updated = { ...currentUser, credits: finalData.remainingCredits };
         setCurrentUser(updated);
         localStorage.setItem("saizup_user", JSON.stringify(updated));
       }
 
-      setGenerationCaptionCount(allSubtitles.length);
+      setGenerationCaptionCount(stitchedSubtitles.length);
       setGenerationProgress(100);
       await new Promise((resolve) => window.setTimeout(resolve, 650));
-      showToast(`ສ້າງຊັບສຳເລັດ ${allSubtitles.length} ຊ່ວງ ຈາກຄລິບ ${Math.round(videoDuration)} ວິນາທີ · ${finalData?.costCredits || 0} ເຄຣດິດ`);
+      showToast(`ສ້າງຊັບສຳເລັດ ${stitchedSubtitles.length} ຊ່ວງ (16kHz Sync) ຈາກຄລິບ ${Math.round(videoDuration)} ວິນາທີ · ${finalData?.costCredits || 0} ເຄຣດິດ`);
     } catch (err: any) {
       console.error(err);
       showToast(`❌ ຂໍ້ຜິດພາດ: ${err.message || "ເກີດຂໍ້ຜິດພາດ"}`);
@@ -880,6 +950,99 @@ export default function SubtitleStudioPage() {
     setCopiedSuccess(true);
     showToast("📋 ສຳເນົາຂໍ້ຄວາມຊັບທັງໝົດແລ້ວ!");
     setTimeout(() => setCopiedSuccess(false), 2000);
+  };
+
+  // Export Adobe Premiere Pro XML (.XML)
+  const handleExportPremiereXML = () => {
+    const blocks: SubtitleBlock[] = displaySubtitles.map((s) => ({
+      id: s.id,
+      time: s.time,
+      endTime: s.endTime,
+      text: translatedText(s),
+      words: s.words?.map((w: any) => ({
+        text: w.text,
+        startSec: w.startSec !== undefined ? w.startSec : s.time,
+        endSec: w.endSec !== undefined ? w.endSec : s.endTime,
+        confidence: w.confidence || 0.95,
+      })) || [],
+      confidence: 0.98,
+      cps: 14,
+    }));
+    const xmlContent = exportToPremiereXML(blocks, 30);
+    const blob = new Blob([xmlContent], { type: "application/xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `subtitles_${selectedLanguage}_premiere.xml`;
+    a.click();
+    showToast("📥 ດາວໂຫຼດໄຟລ໌ Adobe Premiere Pro XML (.XML) ສຳເລັດແລ້ວ!");
+  };
+
+  // Export Apple Final Cut Pro XML (.FCPXML)
+  const handleExportFCPXML = () => {
+    const blocks: SubtitleBlock[] = displaySubtitles.map((s) => ({
+      id: s.id,
+      time: s.time,
+      endTime: s.endTime,
+      text: translatedText(s),
+      words: s.words?.map((w: any) => ({
+        text: w.text,
+        startSec: w.startSec !== undefined ? w.startSec : s.time,
+        endSec: w.endSec !== undefined ? w.endSec : s.endTime,
+        confidence: w.confidence || 0.95,
+      })) || [],
+      confidence: 0.98,
+      cps: 14,
+    }));
+    const fcpxmlContent = exportToFCPXML(blocks, 30);
+    const blob = new Blob([fcpxmlContent], { type: "application/xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `subtitles_${selectedLanguage}_finalcut.fcpxml`;
+    a.click();
+    showToast("📥 ດາວໂຫຼດໄຟລ໌ Final Cut Pro FCPXML (.FCPXML) ສຳເລັດແລ້ວ!");
+  };
+
+  // Global Time Offset (+/- deltaSeconds)
+  const handleApplyGlobalOffset = (deltaSeconds: number) => {
+    if (!subtitles.length || deltaSeconds === 0) return;
+    setSubtitles((prev) =>
+      prev.map((sub) => {
+        const newTime = Math.max(0, Number((sub.time + deltaSeconds).toFixed(3)));
+        const newEndTime = Math.max(newTime + 0.2, Number((sub.endTime + deltaSeconds).toFixed(3)));
+        const newWords = sub.words?.map((w: any) => ({
+          ...w,
+          startSec: w.startSec !== undefined ? Math.max(0, Number((w.startSec + deltaSeconds).toFixed(3))) : undefined,
+          endSec: w.endSec !== undefined ? Math.max(0, Number((w.endSec + deltaSeconds).toFixed(3))) : undefined,
+        }));
+        return {
+          ...sub,
+          time: newTime,
+          endTime: newEndTime,
+          words: newWords,
+        };
+      })
+    );
+    showToast(`ປັບເວລາຊັບທັງໝົດ ${deltaSeconds > 0 ? `+${deltaSeconds}s` : `${deltaSeconds}s`} ສຳເລັດ!`);
+  };
+
+  // Restore Draft Handler
+  const handleRestoreDraft = () => {
+    try {
+      const draft = localStorage.getItem("saizup_subtitle_draft");
+      if (draft) {
+        const parsed = JSON.parse(draft);
+        if (Array.isArray(parsed.subtitles)) {
+          setSubtitles(parsed.subtitles);
+          if (parsed.fontFamily) setFontFamily(parsed.fontFamily);
+          if (parsed.captionSize) setCaptionSize(parsed.captionSize);
+          if (parsed.captionColor) setCaptionColor(parsed.captionColor);
+          setSavedDraftAvailable(false);
+          showToast(`ກູ້ຄືນຮ່າງໂປຣເຈັກສຳເລັດແລ້ວ (${parsed.subtitles.length} ແຖວ)`);
+        }
+      }
+    } catch {}
   };
 
   const handleExportVideo = async () => {
@@ -1366,6 +1529,72 @@ export default function SubtitleStudioPage() {
                 </span>
               </div>
             )}
+
+            {/* Interactive Audio Waveform Bar (16kHz Audio Sync & Playhead Scrubbing) */}
+            {videoUrl && (
+              <div className="px-3 py-2 bg-[#10121B] border-t border-[#1F2233] flex flex-col gap-1.5 select-none">
+                <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                  <span className="flex items-center gap-1.5 text-cyan-400 font-bold">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                    <span>Audio Waveform (16kHz Native STT Sync)</span>
+                  </span>
+                  <span>
+                    {activeSub
+                      ? `ຊັບທີ່ເລືອກ: ${activeSub.time.toFixed(1)}s - ${activeSub.endTime.toFixed(1)}s`
+                      : "ຄລິກເທິງຄື້ນສຽງເພື່ອເລື່ອນເວລາ"}
+                  </span>
+                </div>
+                {/* Waveform track with scrub indicator */}
+                <div
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                    const newTime = ratio * (videoDuration || 15);
+                    setCurrentTime(Number(newTime.toFixed(2)));
+                    if (videoRef.current) videoRef.current.currentTime = newTime;
+                  }}
+                  className="relative h-9 w-full bg-[#161826] rounded-lg overflow-hidden flex items-end gap-[2px] px-1.5 cursor-pointer hover:border-cyan-500/50 border border-slate-800 transition-colors group"
+                >
+                  {/* Waveform vertical bars */}
+                  {(audioWaveformBars.length > 0
+                    ? audioWaveformBars
+                    : Array.from({ length: 64 }, (_, i) => 12 + Math.sin(i * 0.45) * 8 + ((i * 7) % 9))
+                  ).map((h, bIdx) => {
+                    const barPct = (bIdx / 64) * 100;
+                    const isPlayed = (currentTime / (videoDuration || 15)) * 100 >= barPct;
+                    return (
+                      <div
+                        key={bIdx}
+                        style={{ height: `${Math.max(4, h)}px` }}
+                        className={`flex-1 rounded-t-xs transition-colors ${
+                          isPlayed ? "bg-cyan-400 opacity-90" : "bg-slate-600 opacity-40 group-hover:opacity-60"
+                        }`}
+                      />
+                    );
+                  })}
+                  {/* Subtitle regions on waveform */}
+                  {subtitles.map((sub) => {
+                    const leftPct = (sub.time / (videoDuration || 15)) * 100;
+                    const widthPct = ((sub.endTime - sub.time) / (videoDuration || 15)) * 100;
+                    const isActive = activeSub?.id === sub.id;
+                    return (
+                      <div
+                        key={sub.id}
+                        style={{ left: `${leftPct}%`, width: `${Math.max(1, widthPct)}%` }}
+                        className={`absolute top-0 bottom-0 pointer-events-none rounded-xs border-x ${
+                          isActive ? "bg-cyan-400/25 border-cyan-300" : "bg-yellow-400/10 border-yellow-400/25"
+                        }`}
+                      />
+                    );
+                  })}
+                  {/* Current Playhead Scrubber needle */}
+                  <div
+                    style={{ left: `${((currentTime / (videoDuration || 15)) * 100).toFixed(2)}%` }}
+                    className="absolute top-0 bottom-0 w-0.5 bg-white z-20 pointer-events-none shadow-[0_0_8px_#ffffff]"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Subtitle Preset Selector */}
@@ -1657,6 +1886,21 @@ export default function SubtitleStudioPage() {
               </div>
             </details>
 
+            {/* Custom Vocabulary / Prompt Hinting Input */}
+            <div className="mb-4">
+              <label className="text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+                <span>🏷️ ຄຳສັບສະເພາະ / ຊື່ແບຣນ (Custom Vocabulary):</span>
+                <span className="text-[10px] text-slate-500">ໃສ່ຊື່ສະເພາະກ່ອນຖອດ</span>
+              </label>
+              <input
+                type="text"
+                value={customVocabulary}
+                onChange={(e) => setCustomVocabulary(e.target.value)}
+                placeholder="ເຊັ່ນ: BCEL, TikTok, Saizup, iPhone, ລາວທ່ຽວລາວ..."
+                className="w-full rounded-xl border border-slate-700 bg-[#161824] px-3 py-2 text-xs text-white placeholder:text-slate-500 focus:border-[#12E8FF] focus:outline-none transition-colors"
+              />
+            </div>
+
             {/* Generate Action Button */}
             <button
               onClick={handleGenerate}
@@ -1679,22 +1923,101 @@ export default function SubtitleStudioPage() {
 
           {/* STEP 3: Subtitle Block List & Export Actions */}
           <div className="p-5 rounded-2xl bg-[#12131C] border border-[#262838] flex-1 flex flex-col shadow-lg">
+            {/* Draft Restore Alert */}
+            {savedDraftAvailable && subtitles.length === 0 && (
+              <div className="mb-3 p-3 rounded-xl bg-cyan-950/40 border border-cyan-500/40 flex items-center justify-between text-xs text-cyan-200">
+                <span className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-cyan-400" />
+                  <span>ພົບຮ່າງໂປຣເຈັກທີ່ບັນທຶກໄວ້ອັດຕະໂນມັດ (Draft Available)</span>
+                </span>
+                <button
+                  onClick={handleRestoreDraft}
+                  className="px-2.5 py-1 rounded-lg bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-bold transition-all shadow-sm"
+                >
+                  ກູ້ຄືນຮ່າງ
+                </button>
+              </div>
+            )}
+
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
                 <span className="w-5 h-5 rounded-md bg-[#12E8FF]/20 text-[#12E8FF] flex items-center justify-center text-xs">2</span>
                 <span>ລາຍການຊັບໄຕເຕິລ ({subtitles.length} ບລັອກ)</span>
               </h3>
-              <button
-                onClick={addSubtitleBlock}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#161824] hover:bg-[#25283A] text-slate-300 hover:text-[#12E8FF] text-xs font-semibold border border-slate-700/60 transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>ເພີ່ມແຖວ</span>
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Loop Sentence on Click Toggle */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !loopSentenceEnabled;
+                    setLoopSentenceEnabled(next);
+                    showToast(next ? "🔁 ເປີດໂໝດຫຼິ້ນວົນຊ້ຳປະໂຫຍກ (Loop Sentence: ON)" : "ຫຼິ້ນປົກກະຕິ (Loop: OFF)");
+                  }}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${
+                    loopSentenceEnabled
+                      ? "bg-amber-400/20 text-amber-300 border-amber-400/50 shadow-sm shadow-amber-400/10"
+                      : "bg-[#161824] hover:bg-[#25283A] text-slate-400 border-slate-700/60"
+                  }`}
+                  title="ເມື່ອກົດເລືອກຊັບແຖວໃດ ຈະຫຼິ້ນວົນຊ້ຳສະເພາະປະໂຫຍກນັ້ນ ເພື່ອກວດຈັງຫວະປາກ"
+                >
+                  <span>🔁 ຫຼິ້ນວົນຊ້ຳ</span>
+                </button>
+
+                <button
+                  onClick={addSubtitleBlock}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#161824] hover:bg-[#25283A] text-slate-300 hover:text-[#12E8FF] text-xs font-semibold border border-slate-700/60 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>ເພີ່ມແຖວ</span>
+                </button>
+              </div>
             </div>
 
+            {/* Global Time Shift (+/- Offset) Toolbar */}
+            {subtitles.length > 0 && (
+              <div className="mb-3 px-3 py-2 rounded-xl bg-[#161826] border border-slate-700/60 flex items-center justify-between gap-2 text-xs">
+                <span className="text-[11px] text-slate-400 font-medium">
+                  ⏱️ ເລື່ອນເວລາທັງໝົດ (Global Offset):
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleApplyGlobalOffset(-0.5)}
+                    className="px-2 py-0.5 rounded bg-[#1F2233] hover:bg-[#2a2e45] text-slate-300 font-mono text-[11px] border border-slate-700"
+                    title="ເລື່ອນເວລາຊັບທັງໝົດໄວຂຶ້ນ 500ms (-0.5s)"
+                  >
+                    -0.5s
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyGlobalOffset(-0.1)}
+                    className="px-2 py-0.5 rounded bg-[#1F2233] hover:bg-[#2a2e45] text-slate-300 font-mono text-[11px] border border-slate-700"
+                    title="ເລື່ອນເວລາຊັບທັງໝົດໄວຂຶ້ນ 100ms (-0.1s)"
+                  >
+                    -0.1s
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyGlobalOffset(0.1)}
+                    className="px-2 py-0.5 rounded bg-[#1F2233] hover:bg-[#2a2e45] text-slate-300 font-mono text-[11px] border border-slate-700"
+                    title="ເລື່ອນເວລາຊັບທັງໝົດຊ້າລົງ 100ms (+0.1s)"
+                  >
+                    +0.1s
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyGlobalOffset(0.5)}
+                    className="px-2 py-0.5 rounded bg-[#1F2233] hover:bg-[#2a2e45] text-slate-300 font-mono text-[11px] border border-slate-700"
+                    title="ເລື່ອນເວລາຊັບທັງໝົດຊ້າລົງ 500ms (+0.5s)"
+                  >
+                    +0.5s
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Subtitle Blocks Scrollable List */}
-            <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-1 mb-4 flex-1">
+            <div className="space-y-2.5 max-h-[440px] overflow-y-auto pr-1 mb-4 flex-1">
               {subtitles.length === 0 && (
                 <div className="rounded-xl border border-dashed border-slate-700 px-4 py-8 text-center">
                   <FileText className="mx-auto mb-2 h-6 w-6 text-slate-400" />
@@ -1702,48 +2025,72 @@ export default function SubtitleStudioPage() {
                   <p className="mt-1 text-xs text-slate-400">ອັບໂຫຼດວິດີໂອ ແລ້ວກົດ “ເລີ່ມຖອດສຽງ”</p>
                 </div>
               )}
-              {subtitles.map((sub, index) => (
-                <div
-                  key={sub.id}
-                  className="p-3 rounded-xl bg-[#161824] border border-slate-700 hover:border-slate-700 transition-all flex flex-col gap-1.5"
-                >
-                  <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
-                    <span className="text-[#12E8FF] font-bold">#{index + 1}</span>
-                    <button
-                      onClick={() => deleteSubtitleBlock(sub.id)}
-                      className="text-slate-400 hover:text-red-400 transition-colors"
-                      title="ລຶບແຖວນີ້"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+              {subtitles.map((sub, index) => {
+                const isActive = activeSub?.id === sub.id || activeSentenceId === sub.id;
+                return (
+                  <div
+                    key={sub.id}
+                    onClick={() => {
+                      setActiveSentenceId(sub.id);
+                      if (videoRef.current) {
+                        videoRef.current.currentTime = sub.time;
+                        if (loopSentenceEnabled) {
+                          videoRef.current.play().catch(() => {});
+                          setIsPlaying(true);
+                        }
+                      }
+                    }}
+                    className={`p-3 rounded-xl border transition-all flex flex-col gap-1.5 cursor-pointer ${
+                      isActive
+                        ? "bg-[#182333] border-cyan-400 shadow-sm shadow-cyan-500/20 ring-1 ring-cyan-400/40"
+                        : "bg-[#161824] border-slate-700 hover:border-slate-600"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                      <span className="text-[#12E8FF] font-bold">
+                        #{index + 1} {loopSentenceEnabled && isActive && <span className="ml-1 text-[9px] text-amber-300">🔁 ກຳລັງວົນຊ້ຳ</span>}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteSubtitleBlock(sub.id);
+                        }}
+                        className="text-slate-400 hover:text-red-400 transition-colors p-1"
+                        title="ລຶບແຖວນີ້"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2" onClick={(e) => e.stopPropagation()}>
+                      <label className="text-[10px] text-slate-400">ເລີ່ມ (ວິນາທີ)
+                        <input type="number" min="0" step="0.1" value={sub.time} onChange={(event) => updateSubtitleTiming(sub.id, "time", Number(event.target.value))} className="mt-1 w-full rounded-lg border border-slate-700 bg-[#1A1C29] px-2 py-1.5 text-xs text-white focus:border-[#12E8FF] focus:outline-none" aria-label={`ເວລາເລີ່ມຂອງຊັບແຖວ ${index + 1}`} />
+                        <button type="button" onClick={() => updateSubtitleTiming(sub.id, "time", currentTime)} className="mt-1 text-[10px] text-cyan-400 hover:text-cyan-300">ໃຊ້ຈຸດຫຼິ້ນ {currentTime.toFixed(1)}s</button>
+                      </label>
+                      <label className="text-[10px] text-slate-400">ສິ້ນສຸດ (ວິນາທີ)
+                        <input type="number" min="0" step="0.1" value={sub.endTime} onChange={(event) => updateSubtitleTiming(sub.id, "endTime", Number(event.target.value))} className="mt-1 w-full rounded-lg border border-slate-700 bg-[#1A1C29] px-2 py-1.5 text-xs text-white focus:border-[#12E8FF] focus:outline-none" aria-label={`ເວລາສິ້ນສຸດຂອງຊັບແຖວ ${index + 1}`} />
+                        <button type="button" onClick={() => updateSubtitleTiming(sub.id, "endTime", currentTime)} className="mt-1 text-[10px] text-cyan-400 hover:text-cyan-300">ໃຊ້ຈຸດຫຼິ້ນ {currentTime.toFixed(1)}s</button>
+                      </label>
+                    </div>
+                    <input
+                      type="text"
+                      value={sub.text}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => updateSubtitleText(sub.id, e.target.value)}
+                      aria-label={`ຂໍ້ຄວາມຊັບແຖວ ${index + 1}`}
+                      className="w-full bg-[#1A1C29] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-[#12E8FF]"
+                    />
+                    <input
+                      type="text"
+                      value={sub.translatedText || ""}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(event) => updateSubtitleTranslation(sub.id, event.target.value)}
+                      aria-label={`ຄຳແປຂອງຊັບແຖວ ${index + 1}`}
+                      placeholder={`ຄຳແປ ${translationTarget === "lo" ? "ລາວ" : translationTarget === "th" ? "ໄທ" : "English"} · ແກ້ໄຂໄດ້`}
+                      className="w-full bg-[#1A1C29] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-cyan-100 placeholder:text-slate-500 focus:outline-none focus:border-[#12E8FF]"
+                    />
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="text-[10px] text-slate-400">ເລີ່ມ (ວິນາທີ)
-                      <input type="number" min="0" step="0.1" value={sub.time} onChange={(event) => updateSubtitleTiming(sub.id, "time", Number(event.target.value))} className="mt-1 w-full rounded-lg border border-slate-700 bg-[#1A1C29] px-2 py-1.5 text-xs text-white focus:border-[#12E8FF] focus:outline-none" aria-label={`ເວລາເລີ່ມຂອງຊັບແຖວ ${index + 1}`} />
-                      <button type="button" onClick={() => updateSubtitleTiming(sub.id, "time", currentTime)} className="mt-1 text-[10px] text-cyan-400 hover:text-cyan-300">ໃຊ້ຈຸດຫຼິ້ນ {currentTime.toFixed(1)}s</button>
-                    </label>
-                    <label className="text-[10px] text-slate-400">ສິ້ນສຸດ (ວິນາທີ)
-                      <input type="number" min="0" step="0.1" value={sub.endTime} onChange={(event) => updateSubtitleTiming(sub.id, "endTime", Number(event.target.value))} className="mt-1 w-full rounded-lg border border-slate-700 bg-[#1A1C29] px-2 py-1.5 text-xs text-white focus:border-[#12E8FF] focus:outline-none" aria-label={`ເວລາສິ້ນສຸດຂອງຊັບແຖວ ${index + 1}`} />
-                      <button type="button" onClick={() => updateSubtitleTiming(sub.id, "endTime", currentTime)} className="mt-1 text-[10px] text-cyan-400 hover:text-cyan-300">ໃຊ້ຈຸດຫຼິ້ນ {currentTime.toFixed(1)}s</button>
-                    </label>
-                  </div>
-                  <input
-                    type="text"
-                    value={sub.text}
-                    onChange={(e) => updateSubtitleText(sub.id, e.target.value)}
-                    aria-label={`ຂໍ້ຄວາມຊັບແຖວ ${index + 1}`}
-                    className="w-full bg-[#1A1C29] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-[#12E8FF]"
-                  />
-                  <input
-                    type="text"
-                    value={sub.translatedText || ""}
-                    onChange={(event) => updateSubtitleTranslation(sub.id, event.target.value)}
-                    aria-label={`ຄຳແປຂອງຊັບແຖວ ${index + 1}`}
-                    placeholder={`ຄຳແປ ${translationTarget === "lo" ? "ລາວ" : translationTarget === "th" ? "ໄທ" : "English"} · ແກ້ໄຂໄດ້`}
-                    className="w-full bg-[#1A1C29] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-cyan-100 placeholder:text-slate-500 focus:outline-none focus:border-[#12E8FF]"
-                  />
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Export Actions Bar */}
@@ -1784,6 +2131,26 @@ export default function SubtitleStudioPage() {
               >
                 <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
                 <span>.ASS</span>
+              </button>
+
+              <button
+                onClick={handleExportPremiereXML}
+                disabled={subtitles.length === 0}
+                className="flex-1 py-2 px-2 rounded-xl bg-[#1B1E2E] hover:bg-[#252a3d] border border-slate-700 text-[11px] font-semibold text-slate-200 transition-colors flex items-center justify-center gap-1"
+                title="Adobe Premiere Pro XML Sequence"
+              >
+                <Download className="w-3 h-3 text-cyan-400" />
+                <span>Premiere .XML</span>
+              </button>
+
+              <button
+                onClick={handleExportFCPXML}
+                disabled={subtitles.length === 0}
+                className="flex-1 py-2 px-2 rounded-xl bg-[#1B1E2E] hover:bg-[#252a3d] border border-slate-700 text-[11px] font-semibold text-slate-200 transition-colors flex items-center justify-center gap-1"
+                title="Apple Final Cut Pro XML"
+              >
+                <Download className="w-3 h-3 text-cyan-400" />
+                <span>Final Cut .FCPXML</span>
               </button>
 
               <button

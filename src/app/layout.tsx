@@ -1,10 +1,48 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import CookieBanner from "@/components/landing/CookieBanner";
 
 export const metadata: Metadata = {
-  title: "SAIZUP AI - CapCut & LaoSub Video Studio",
+  title: "SAIZUP AI - AI Subtitles & Video Studio (ພາສາລາວ & ໄທ)",
   description:
-    "AI-powered Lao (ພາສາລາວ) & Thai subtitle generator, auto-cut, and styling studio with CapCut design system.",
+    "ເວັບໄຊຕັດຕໍ່ວິດີໂອສັ້ນ ແລະ ສ້າງຊັບໄຕເຕິລ AI ພາສາລາວ ແລະ ໄທ ອັດຕະໂນມັດ ລະດັບມືອາຊີບ ດ້ວຍລະບົບ CapCut Studio Design System",
+  keywords: [
+    "SAIZUP AI",
+    "ສ້າງຊັບໄຕເຕິລລາວ",
+    "ຊັບໄຕເຕິລພາສາລາວ",
+    "ຕັດຕໍ່ວິດີໂອ",
+    "AI Subtitles Lao",
+    "Lao Speech to Text",
+    "CapCut Lao Subtitles",
+    "TikTok Video Editor Laos",
+    "สร้างซับไตเติลลาวไทย",
+  ],
+  authors: [{ name: "SAIZUP AI Team" }],
+  creator: "SAIZUP AI",
+  publisher: "SAIZUP AI Studio",
+  metadataBase: new URL("https://saizup.ai"),
+  openGraph: {
+    title: "SAIZUP AI - AI Subtitles & CapCut Video Studio",
+    description: "ສ້າງຊັບໄຕເຕິລພາສາລາວ ແລະ ຕັດຕໍ່ວິດີໂອສັ້ນລະດັບມືອາຊີບດ້ວຍ AI",
+    url: "https://saizup.ai",
+    siteName: "SAIZUP AI Studio",
+    images: [
+      {
+        url: "/brand/saizup-symbol.png",
+        width: 1200,
+        height: 630,
+        alt: "SAIZUP AI Studio",
+      },
+    ],
+    locale: "lo_LA",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "SAIZUP AI - AI Subtitles & CapCut Video Studio",
+    description: "ສ້າງຊັບໄຕເຕິລພາສາລາວ ແລະ ຕັດຕໍ່ວິດີໂອສັ້ນລະດັບມືອາຊີບດ້ວຍ AI",
+    images: ["/brand/saizup-symbol.png"],
+  },
   icons: {
     icon: "/brand/saizup-favicon.png",
     shortcut: "/brand/saizup-favicon.png",
@@ -60,6 +98,7 @@ export default function RootLayout({
       </head>
       <body className="antialiased min-h-screen bg-[#0F0F10] text-[#F6F6F6] font-sans selection:bg-[#12E8FF] selection:text-[#090C14]">
         {children}
+        <CookieBanner />
       </body>
     </html>
   );

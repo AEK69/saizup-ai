@@ -150,9 +150,16 @@ export function sanitizeCodeSwitching(text: string, targetLanguage: SupportedLan
 /**
  * 2. High-Accuracy Word Segmentation (Intl.Segmenter + Lao/Thai Morphology)
  * Breaks unspaced Lao or Thai sentences into individual word tokens for karaoke timing
+ * - Ensures combining vowels & tone marks are never detached from base consonants
+ * - Preserves code-switching English brand words (e.g., BCEL, TikTok, One)
  */
 export function segmentWords(text: string, lang: SupportedLanguage): string[] {
   if (!text) return [];
+
+  // Regex pattern for Lao / Thai combining marks (vowels above/below, tone marks, cancellations)
+  const combiningMarksRegex = /^[\u0EB1\u0EB4-\u0EBC\u0EC8-\u0ECD\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/;
+
+  let rawWords: string[] = [];
 
   // Use Intl.Segmenter if supported by JS environment (Node.js 16+ & all modern browsers)
   if (typeof Intl !== 'undefined' && (Intl as any).Segmenter) {
@@ -160,24 +167,36 @@ export function segmentWords(text: string, lang: SupportedLanguage): string[] {
       const locale = lang === 'lo' ? 'lo-LA' : lang === 'th' ? 'th-TH' : 'en-US';
       const segmenter = new (Intl as any).Segmenter(locale, { granularity: 'word' });
       const segments = Array.from(segmenter.segment(text)) as { segment: string; isWordLike: boolean }[];
-      
-      const words = segments
+
+      rawWords = segments
         .filter((s) => s.segment.trim().length > 0)
         .map((s) => s.segment.trim());
-
-      if (words.length > 0) {
-        return words;
-      }
-    } catch (e) {
+    } catch {
       // fallback to regex if locale is not supported
     }
   }
 
-  // Fallback: Split by spaces and token boundary regex
-  return text
-    .split(/\s+/)
-    .map((w) => w.trim())
-    .filter((w) => w.length > 0);
+  if (rawWords.length === 0) {
+    // Fallback: Split by spaces and token boundary regex
+    rawWords = text
+      .split(/\s+/)
+      .map((w) => w.trim())
+      .filter((w) => w.length > 0);
+  }
+
+  // Post-processing: Re-attach detached diacritics / tone marks to previous word
+  const mergedWords: string[] = [];
+  for (let i = 0; i < rawWords.length; i++) {
+    const current = rawWords[i];
+    if (mergedWords.length > 0 && combiningMarksRegex.test(current)) {
+      // Current token is an orphaned vowel/tone mark; attach to previous token
+      mergedWords[mergedWords.length - 1] += current;
+    } else {
+      mergedWords.push(current);
+    }
+  }
+
+  return mergedWords;
 }
 
 /**
@@ -419,4 +438,101 @@ export function exportToSRT(subtitles: SubtitleBlock[]): string {
   });
 
   return srt;
+}
+
+/**
+ * 9. Export to Adobe Premiere Pro XML Sequence (.XML)
+ */
+export function exportToPremiereXML(subtitles: SubtitleBlock[], fps = 30): string {
+  const timeToFrames = (sec: number) => Math.round(sec * fps);
+  let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE xmeml>
+<xmeml version="4">
+  <sequence>
+    <name>SAIZUP_Subtitles_Sequence</name>
+    <rate>
+      <timebase>${fps}</timebase>
+      <ntsc>FALSE</ntsc>
+    </rate>
+    <media>
+      <video>
+        <track>
+`;
+
+  subtitles.forEach((sub, idx) => {
+    const startFrame = timeToFrames(sub.time);
+    const endFrame = timeToFrames(sub.endTime);
+    const durFrames = Math.max(1, endFrame - startFrame);
+    const escapedText = sub.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    xml += `          <generatoritem id="sub-${idx + 1}">
+            <name>${escapedText}</name>
+            <duration>${durFrames}</duration>
+            <rate><timebase>${fps}</timebase><ntsc>FALSE</ntsc></rate>
+            <start>${startFrame}</start>
+            <end>${endFrame}</end>
+            <effect>
+              <name>Basic Title</name>
+              <effectid>basic_title</effectid>
+              <effecttype>generator</effecttype>
+              <mediatype>video</mediatype>
+              <parameter>
+                <parameterid>text</parameterid>
+                <name>Text</name>
+                <value>${escapedText}</value>
+              </parameter>
+            </effect>
+          </generatoritem>\n`;
+  });
+
+  xml += `        </track>
+      </video>
+    </media>
+  </sequence>
+</xmeml>`;
+
+  return xml;
+}
+
+/**
+ * 10. Export to Apple Final Cut Pro XML (.FCPXML)
+ */
+export function exportToFCPXML(subtitles: SubtitleBlock[], fps = 30): string {
+  let fcpxml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE fcpxml>
+<fcpxml version="1.9">
+  <resources>
+    <format id="r1" name="FFVideoFormat1080p${fps}" frameDuration="1/${fps}s" width="1080" height="1920"/>
+    <effect id="r2" name="Basic Title" uid=".../Titles.localized/Bumper:Opener.localized/Basic Title.localized/Basic Title.moti"/>
+  </resources>
+  <library>
+    <event name="SAIZUP AI Captions">
+      <project name="SAIZUP Subtitles">
+        <sequence format="r1" duration="${Math.ceil((subtitles[subtitles.length - 1]?.endTime || 30) * fps)}/${fps}s">
+          <spine>
+`;
+
+  subtitles.forEach((sub, idx) => {
+    const startSeconds = sub.time;
+    const durSeconds = Math.max(0.1, sub.endTime - sub.time);
+    const escapedText = sub.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    fcpxml += `            <title ref="r2" name="Caption ${idx + 1}" offset="${startSeconds}s" duration="${durSeconds}s" start="0s">
+              <text>
+                <text-style ref="ts${idx + 1}">${escapedText}</text-style>
+              </text>
+              <text-style-def id="ts${idx + 1}">
+                <text-style font="Noto Sans Lao" fontSize="64" fontColor="1 1 1 1" alignment="center"/>
+              </text-style-def>
+            </title>\n`;
+  });
+
+  fcpxml += `          </spine>
+        </sequence>
+      </project>
+    </event>
+  </library>
+</fcpxml>`;
+
+  return fcpxml;
 }

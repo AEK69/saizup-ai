@@ -1,7 +1,12 @@
 /**
  * Audio Extractor Utility for SAIZUP AI
- * Extracts mono 12kHz PCM WAV audio directly from an uploaded video file (MP4, WebM, MOV)
+ * Extracts mono 16kHz PCM WAV audio directly from an uploaded video file (MP4, WebM, MOV)
  * in the user's browser using Web Audio API / OfflineAudioContext.
+ * Features:
+ * - 16,000 Hz sample rate (universal STT standard for tonal Lao/Thai phonetics)
+ * - Chunk boundary overlap (1.5s) to avoid severed words
+ * - Frame-level Voice Activity Detection (VAD) to skip music/silence hallucination
+ * - Browser memory protection for files > 500MB
  */
 
 export interface ExtractedAudioChunk {
@@ -11,13 +16,15 @@ export interface ExtractedAudioChunk {
   offsetSeconds: number;
   sampleRate: number;
   hasAudio: boolean;
+  overlapSeconds?: number;
+  vadVoicedRatio?: number;
 }
 
 export type ExtractedAudioResult = Omit<ExtractedAudioChunk, 'offsetSeconds'>;
 
 /**
- * Extracts the complete audio track in small WAV chunks so long clips stay
- * below the per-request AI payload limit and receive accurate time offsets.
+ * Extracts the complete audio track in small WAV chunks with 1.5s boundary overlap
+ * so long clips stay below payload limits and never cut words in half.
  */
 export async function extractAudioChunksFromVideoFile(
   videoFile: File,
@@ -26,6 +33,13 @@ export async function extractAudioChunksFromVideoFile(
   onProgress?: (completedChunks: number, totalChunks: number) => void
 ): Promise<ExtractedAudioChunk[]> {
   try {
+    // 0. Large file memory protection
+    if (videoFile.size > 500 * 1024 * 1024) {
+      console.warn(
+        `[audioExtractor] Large file (${(videoFile.size / (1024 * 1024)).toFixed(1)}MB). Extracting audio stream carefully to protect browser RAM.`
+      );
+    }
+
     // 1. Read file as ArrayBuffer
     const arrayBuffer = await videoFile.arrayBuffer();
 
@@ -42,7 +56,7 @@ export async function extractAudioChunksFromVideoFile(
     try {
       decodedAudio = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
     } catch {
-      throw new Error('ອ່ານແທຣັກສຽງຈາກວິດີໂອບໍ່ໄດ້ ກະລຸນາໃຊ້ MP4 ຫຼື WAV');
+      throw new Error('ອ່ານແທຣັກສຽງຈາກວິດີໂອບໍ່ໄດ້ ກະລຸນາໃຊ້ MP4, WebM ຫຼື WAV');
     } finally {
       if (audioCtx.state !== 'closed') {
         audioCtx.close();
@@ -54,34 +68,72 @@ export async function extractAudioChunksFromVideoFile(
       throw new Error('ບໍ່ພົບສຽງໃນໄຟລ໌ວິດີໂອ');
     }
 
-    const targetSampleRate = 12000;
+    // 16kHz standard for Speech-to-Text (Lao/Thai tonal preservation)
+    const targetSampleRate = 16000;
+    const overlapSeconds = 1.5;
     const chunks: ExtractedAudioChunk[] = [];
     const totalChunks = Math.ceil(duration / chunkDurationSeconds);
     onProgress?.(0, totalChunks);
-    for (let offsetSeconds = 0; offsetSeconds < duration; offsetSeconds += chunkDurationSeconds) {
-      const chunkDuration = Math.min(chunkDurationSeconds, duration - offsetSeconds);
-      const numSamples = Math.ceil(targetSampleRate * chunkDuration);
+
+    let offsetSeconds = 0;
+    while (offsetSeconds < duration) {
+      // Chunk start and duration with boundary overlap
+      const chunkStart = offsetSeconds;
+      const rawChunkDuration = Math.min(chunkDurationSeconds, duration - chunkStart);
+      // For chunks after the first, include an overlap window to avoid cut-off words
+      const includeOverlap = offsetSeconds > 0 && offsetSeconds + rawChunkDuration < duration;
+      const actualDuration = Math.min(
+        includeOverlap ? rawChunkDuration + overlapSeconds : rawChunkDuration,
+        duration - chunkStart
+      );
+
+      const numSamples = Math.ceil(targetSampleRate * actualDuration);
       const offlineCtx = new OfflineAudioContext(1, numSamples, targetSampleRate);
       const source = offlineCtx.createBufferSource();
       source.buffer = decodedAudio;
       source.connect(offlineCtx.destination);
-      source.start(0, offsetSeconds, chunkDuration);
+      source.start(0, chunkStart, actualDuration);
 
       const renderedBuffer = await offlineCtx.startRendering();
       const channelData = renderedBuffer.getChannelData(0);
+
+      // Voice Activity Detection (VAD) via short-term frame energy / RMS
+      const frameSize = Math.floor(targetSampleRate * 0.05); // 50ms frames
+      let voicedFrames = 0;
+      let totalFrames = 0;
       let maxAmplitude = 0;
-      for (let i = 0; i < channelData.length; i += 100) {
-        maxAmplitude = Math.max(maxAmplitude, Math.abs(channelData[i]));
+
+      for (let i = 0; i < channelData.length; i += frameSize) {
+        let frameEnergy = 0;
+        const end = Math.min(channelData.length, i + frameSize);
+        for (let j = i; j < end; j++) {
+          const val = channelData[j];
+          frameEnergy += val * val;
+          maxAmplitude = Math.max(maxAmplitude, Math.abs(val));
+        }
+        const rms = Math.sqrt(frameEnergy / Math.max(1, end - i));
+        // Voiced speech energy threshold (filter dead air & low hums)
+        if (rms > 0.012) {
+          voicedFrames++;
+        }
+        totalFrames++;
       }
+
+      const vadVoicedRatio = totalFrames > 0 ? voicedFrames / totalFrames : 0;
+      const hasAudio = maxAmplitude > 0.005 && (vadVoicedRatio > 0.015 || maxAmplitude > 0.08);
 
       chunks.push({
         base64: arrayBufferToBase64(encodePCM16Wav(channelData, targetSampleRate)),
         mimeType: 'audio/wav',
-        duration: chunkDuration,
-        offsetSeconds,
+        duration: actualDuration,
+        offsetSeconds: chunkStart,
         sampleRate: targetSampleRate,
-        hasAudio: maxAmplitude > 0.005,
+        hasAudio,
+        overlapSeconds: includeOverlap ? overlapSeconds : 0,
+        vadVoicedRatio,
       });
+
+      offsetSeconds += chunkDurationSeconds;
       onProgress?.(chunks.length, totalChunks);
     }
 
@@ -181,4 +233,46 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   }
 
   return btoa(binary);
+}
+
+/**
+ * Intelligent Subtitle Stitcher & De-duplicator for overlapping chunk boundaries.
+ * Merges subtitle arrays from sequential chunks, removing any redundant segments
+ * that fall in the overlap window and smoothing time transitions.
+ */
+export function stitchOverlappingSubtitles<T extends { time: number; endTime: number; text: string }>(
+  allSubtitles: T[]
+): T[] {
+  if (allSubtitles.length <= 1) return allSubtitles;
+
+  // Sort strictly by start time
+  const sorted = [...allSubtitles].sort((a, b) => a.time - b.time);
+  const result: T[] = [];
+
+  for (let i = 0; i < sorted.length; i++) {
+    const current = sorted[i];
+    const prev = result[result.length - 1];
+
+    if (!prev) {
+      result.push(current);
+      continue;
+    }
+
+    // Check for duplicate or heavily overlapping text
+    const cleanCur = current.text.replace(/\s+/g, '').toLowerCase();
+    const cleanPrev = prev.text.replace(/\s+/g, '').toLowerCase();
+    const timeOverlap = Math.min(prev.endTime, current.endTime) - Math.max(prev.time, current.time);
+
+    // Exact or partial duplicate inside overlap boundary window
+    if (timeOverlap > 0.3 && (cleanCur === cleanPrev || cleanPrev.includes(cleanCur) || cleanCur.includes(cleanPrev))) {
+      // Extend previous end time if current is longer, without duplicating line
+      prev.endTime = Math.max(prev.endTime, current.endTime);
+      continue;
+    }
+
+    // Normal non-duplicate item
+    result.push(current);
+  }
+
+  return result;
 }

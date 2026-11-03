@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
       videoTitle,
       aiVersion = 'v1',
       intervalMode = 'sentence', // '30s' or 'sentence'
+      customVocabulary,
       userEmail,
     } = body;
 
@@ -119,6 +120,7 @@ export async function POST(req: NextRequest) {
       videoTitle: cleanTitle,
       aiVersion: selectedVersion,
       intervalMode: intervalMode === '30s' ? '30s' : 'sentence',
+      customVocabulary: typeof customVocabulary === 'string' ? customVocabulary.trim() : undefined,
     });
 
     if (isLastChunk) {

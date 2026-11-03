@@ -27,30 +27,30 @@ export const AI_ENGINE_MODELS: Record<AiEngineVersion, {
   fallbacks: string[];
   thinkingLevel?: 'low' | 'medium';
 }> = {
-  // Kept deliberately economical for the free plan.
+  // Free / Fast tier: Native Audio Multimodal with sub-second timestamps
   v1: {
-    label: 'Gemini 3.5 Flash-Lite',
-    primary: 'gemini-3.5-flash-lite',
-    fallbacks: [],
+    label: 'SAIZUP Standard (Gemini 2.5 Flash)',
+    primary: 'gemini-2.5-flash',
+    fallbacks: ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.0-flash-lite'],
   },
-  // The current fast production model: the best speed/quality trade-off.
+  // Fast Production tier: High precision audio alignment
   v2: {
-    label: 'Gemini 3.8 Flash',
-    primary: 'gemini-3.8-flash',
-    fallbacks: ['gemini-3.5-flash-lite'],
+    label: 'SAIZUP Speed (Gemini 2.0 Flash)',
+    primary: 'gemini-2.0-flash',
+    fallbacks: ['gemini-2.5-flash', 'gemini-1.5-flash'],
   },
-  // A higher-reasoning model for mixed Lao/Thai/English translations.
+  // Higher-reasoning tier for mixed Lao/Thai/English translations
   v3: {
-    label: 'Gemini 3.1 Pro',
-    primary: 'gemini-3.1-pro-preview',
-    fallbacks: ['gemini-3.8-flash', 'gemini-3.5-flash-lite'],
+    label: 'SAIZUP Plus (Gemini 2.5 Pro)',
+    primary: 'gemini-2.5-pro',
+    fallbacks: ['gemini-2.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'],
     thinkingLevel: 'low',
   },
-  // Flagship model; deliberately only available to the Pro plan.
+  // Flagship tier: Highest linguistic accuracy for complex audio
   v4: {
-    label: 'Gemini 4 Argon',
-    primary: 'gemini-4-argon',
-    fallbacks: ['gemini-3.1-pro-preview', 'gemini-3.8-flash'],
+    label: 'SAIZUP Pro Flagship (Gemini 2.5 Pro Ultra)',
+    primary: 'gemini-2.5-pro',
+    fallbacks: ['gemini-2.0-pro-exp-02-05', 'gemini-2.5-flash', 'gemini-1.5-pro'],
     thinkingLevel: 'low',
   },
 };
@@ -70,16 +70,9 @@ function getModelResponseText(data: any): string {
 }
 
 function getGenerationConfig(model: string, temperature: number) {
-  const profile = Object.values(AI_ENGINE_MODELS).find((item) => item.primary === model);
-  // Argon ignores sampling controls. Low thinking is sufficient for strict
-  // JSON subtitle work and prevents spending a large amount on internal reasoning.
-  if (model === 'gemini-4-argon') {
-    return {
-      responseMimeType: 'application/json',
-      maxOutputTokens: 8192,
-      thinkingConfig: { thinkingLevel: profile?.thinkingLevel || 'low' },
-    };
-  }
+  const profile = Object.values(AI_ENGINE_MODELS).find(
+    (item) => item.primary === model || item.fallbacks.includes(model)
+  );
   return {
     responseMimeType: 'application/json',
     temperature,
@@ -95,6 +88,8 @@ export interface TranscribeParams {
   videoTitle?: string;
   aiVersion?: AiEngineVersion;
   intervalMode?: '30s' | 'sentence';
+  customVocabulary?: string;
+  chunkOffsetSeconds?: number;
 }
 
 /**
@@ -130,17 +125,21 @@ export async function transcribeWithAI(
     ? 'INTERVAL RULE: Group subtitles into smooth 30-second interval blocks (e.g., 0-30s, 30-60s), ensuring complete coherent paragraphs.'
     : 'INTERVAL RULE: Split into natural short-form video lines of 1.5 to 3.5 seconds each for snappy TikTok/Reels readability.';
 
+  const vocabHint = params.customVocabulary?.trim()
+    ? `\nCUSTOM VOCABULARY & ENTITY HINTS: Pay special attention to these terms, brand names, and slang in this clip: "${params.customVocabulary.trim()}". Transcribe them accurately with correct spelling in their intended scripts.\n`
+    : '';
+
   const prompt = `You are a professional Speech-to-Text (STT) transcriber for video subtitles.
 Target language context: ${langDescription}.
 Engine version: ${version.toUpperCase()}
-
+${vocabHint}
 CRITICAL TASK:
 Transcribe only speech that is actually audible in this audio. This is verbatim speech recognition, not translation, rewriting, summarizing, or guessing. Preserve the speaker's language, code-switching, names, fillers, and repeated words. Never replace Thai with Lao (or Lao with Thai) just because of the selected language. Leave music and silence without subtitles. If a short phrase is genuinely unclear, use [inaudible] instead of inventing words.
 
 LANGUAGE: The selected language is a listening hint, not a translation target. Write every spoken language in its original script.
 ${intervalInstruction}
-TIMING: Set each start and end time from speech heard in this audio chunk. Times are relative to the chunk and must not exceed its duration (${params.videoDuration || 30} seconds).
-WORD TOKENS: Split each subtitle segment into words in the "words" array and include each word's own audio-aligned startSec and endSec (relative to this chunk): [{"text": "word1", "startSec": 0.1, "endSec": 0.4}].
+TIMING: Set each start and end time with sub-second millisecond accuracy (e.g. 1.250). Times are relative to this chunk and must not exceed its duration (${params.videoDuration || 30} seconds).
+WORD TOKENS: Split each subtitle segment into words in the "words" array and include each word's own audio-aligned startSec and endSec (relative to this chunk): [{"text": "word1", "startSec": 0.1, "endSec": 0.4}]. Do not detach Lao/Thai tone marks or vowels above/below from their base consonant.
 
 Output format: Return strictly a valid JSON array of objects:
 [

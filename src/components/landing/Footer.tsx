@@ -65,13 +65,21 @@ export default function Footer() {
           <div>
             <h4 className="text-sm font-bold text-white mb-4 font-inter">{copy.legal}</h4>
             <ul className="space-y-2.5">
-              {copy.legalLinks.map((item) => (
-                <li key={item}>
-                  <a href="#" className="text-sm text-slate-400 hover:text-[#12E8FF] transition-colors">
-                    {item}
-                  </a>
-                </li>
-              ))}
+              <li>
+                <a href="/privacy" className="text-sm text-slate-400 hover:text-[#12E8FF] transition-colors">
+                  {language === "th" ? "นโยบายความเป็นส่วนตัว" : language === "en" ? "Privacy Policy" : "ນະໂຍບາຍສ່ວນຕົວ (Privacy)"}
+                </a>
+              </li>
+              <li>
+                <a href="/terms" className="text-sm text-slate-400 hover:text-[#12E8FF] transition-colors">
+                  {language === "th" ? "ข้อกำหนดการใช้งาน" : language === "en" ? "Terms of Service" : "ເງື່ອນໄຂບໍລິການ (Terms)"}
+                </a>
+              </li>
+              <li>
+                <a href="/privacy#cookies" className="text-sm text-slate-400 hover:text-[#12E8FF] transition-colors">
+                  {language === "th" ? "นโยบายคุกกี้" : language === "en" ? "Cookie Policy" : "ນະໂຍບາຍ Cookies"}
+                </a>
+              </li>
             </ul>
           </div>
         </div>

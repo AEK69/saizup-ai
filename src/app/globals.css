@@ -59,10 +59,22 @@ html, body {
   background-color: var(--bg-primary);
   color: #F6F6F6;
   font-family: var(--font-capcut) !important;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 h1, h2, h3, h4, h5, h6, p, span, a, button, input, textarea, select {
   font-family: var(--font-capcut);
+  text-rendering: optimizeLegibility;
+}
+
+/* Lao & Thai Vowel & Tone-Mark Stacking Fix (Prevents clipping & overlapping) */
+.font-lao, .font-thai, [lang="lo"], [lang="th"], .caption-text, .subtitle-render-box {
+  text-rendering: optimizeLegibility !important;
+  font-feature-settings: "liga" 1, "kern" 1, "clig" 1;
+  font-variant-ligatures: normal;
+  line-height: 1.38 !important;
 }
 
 /* ========================================================= */
