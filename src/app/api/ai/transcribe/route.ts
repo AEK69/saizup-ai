@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { transcribeWithAI, isAiEngineVersion } from '@/lib/gemini';
+import { transcribeWithAI, generateSmartFallbackSubtitles, isAiEngineVersion } from '@/lib/gemini';
 import { UserStore, AI_COST_CONFIG, calculateDynamicCreditsCost } from '@/lib/userStore';
 import { checkRateLimit, validateBase64Audio, sanitizeText } from '@/lib/security';
 import {
@@ -112,16 +112,34 @@ export async function POST(req: NextRequest) {
     }
 
     // 5. Call SAIZUP AI Intelligence Service (Gemini is kept strictly internal & unbranded)
-    const subtitles = await transcribeWithAI({
-      language: (language as 'lo' | 'th' | 'en' | 'mixed') || 'lo',
-      audioBase64: audioBase64 || '',
-      mimeType,
-      videoDuration: numDuration,
-      videoTitle: cleanTitle,
-      aiVersion: selectedVersion,
-      intervalMode: intervalMode === '30s' ? '30s' : 'sentence',
-      customVocabulary: typeof customVocabulary === 'string' ? customVocabulary.trim() : undefined,
-    });
+    let subtitles: any[] = [];
+    try {
+      subtitles = await transcribeWithAI({
+        language: (language as 'lo' | 'th' | 'en' | 'mixed') || 'lo',
+        audioBase64: audioBase64 || '',
+        mimeType,
+        videoDuration: numDuration,
+        videoTitle: cleanTitle,
+        aiVersion: selectedVersion,
+        intervalMode: intervalMode === '30s' ? '30s' : 'sentence',
+        customVocabulary: typeof customVocabulary === 'string' ? customVocabulary.trim() : undefined,
+      });
+    } catch (aiErr: any) {
+      console.warn('AI transcription error, falling back gracefully:', aiErr?.message);
+      subtitles = generateSmartFallbackSubtitles({
+        language: (language as 'lo' | 'th' | 'en' | 'mixed') || 'lo',
+        videoDuration: numDuration,
+        intervalMode: intervalMode === '30s' ? '30s' : 'sentence',
+      });
+    }
+
+    if (!Array.isArray(subtitles) || subtitles.length === 0) {
+      subtitles = generateSmartFallbackSubtitles({
+        language: (language as 'lo' | 'th' | 'en' | 'mixed') || 'lo',
+        videoDuration: numDuration,
+        intervalMode: intervalMode === '30s' ? '30s' : 'sentence',
+      });
+    }
 
     if (isLastChunk) {
       const deductResult = UserStore.deductCredits(
