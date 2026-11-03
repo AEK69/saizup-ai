@@ -426,6 +426,7 @@ export default function SubtitleStudioPage() {
 
     if (videoUrl.startsWith("blob:")) URL.revokeObjectURL(videoUrl);
     setSubtitles([]);
+    setInitialSubtitles([]);
     setVideoDimensions(null);
     setVideoFile(file);
     const url = URL.createObjectURL(file);
@@ -624,46 +625,55 @@ export default function SubtitleStudioPage() {
   };
 
   // Continuous Active Learning Feedback Loop:
-  // Teach AI from user subtitle edits and regional accents
-  const handleTeachAIAccent = async () => {
-    if (subtitles.length === 0) {
-      showToast("ຍັງບໍ່ມີຊັບໄຕເຕິລສຳລັບສອນ AI");
-      return;
-    }
-    setIsTeachingAI(true);
-    try {
-      const res = await fetch("/api/ai/learn-accent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          originalSubtitles: initialSubtitles.length > 0 ? initialSubtitles : subtitles,
-          editedSubtitles: subtitles,
-          dialect: selectedDialect,
-          language: selectedLanguage,
-          userEmail: currentUser?.email,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        if (typeof data.totalLearnedInSystem === "number") {
-          setLearnedTotal(data.totalLearnedInSystem);
+  // Automatically learn regional accents and vocabulary corrections from user edits
+  useEffect(() => {
+    if (subtitles.length === 0 || initialSubtitles.length === 0) return;
+
+    // Detect if there are meaningful text changes between original heard and edited subtitles
+    const hasEdits = subtitles.some((sub, i) => {
+      const orig = initialSubtitles[i];
+      if (!orig) return false;
+      const t1 = orig.text.trim();
+      const t2 = sub.text.trim();
+      return t1.length > 0 && t2.length > 0 && t1 !== t2;
+    });
+
+    if (!hasEdits) return;
+
+    const timer = setTimeout(async () => {
+      setIsTeachingAI(true);
+      try {
+        const res = await fetch("/api/ai/learn-accent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            originalSubtitles: initialSubtitles,
+            editedSubtitles: subtitles,
+            dialect: selectedDialect,
+            language: selectedLanguage,
+            userEmail: currentUser?.email,
+          }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          if (typeof data.totalLearnedInSystem === "number") {
+            setLearnedTotal(data.totalLearnedInSystem);
+          }
+          // Update baseline so we don't trigger the same diff repeatedly
+          setInitialSubtitles(subtitles.map((s) => ({ ...s })));
+          if (data.learnedCount > 0) {
+            showToast(`🧠 AI ຮຽນຮູ້ສຳນຽງອັດຕະໂນມັດແລ້ວ (+${data.learnedCount} ຄຳສັບໃໝ່)`);
+          }
         }
-        setInitialSubtitles([...subtitles]);
-        if (data.learnedCount > 0) {
-          showToast(`🎉 AI ໄດ້ຮຽນຮູ້ ${data.learnedCount} ຄຳສັບ/ສຳນຽງໃໝ່ຈາກຄລິບນີ້ແລ້ວ! (ຖານຂໍ້ມູນລວມ ${data.totalLearnedInSystem} ຮູບແບບ)`);
-        } else {
-          showToast(`💡 ບັນທຶກສຳນຽງຄລິບນີ້ແລ້ວ! AI ຈະນຳໄປປັບປຸງຄວາມແມ່ນຍຳໃນຄັ້ງຕໍ່ໄປ`);
-        }
-      } else {
-        showToast(`⚠️ ${data.error || "ບັນທຶກບໍ່ສຳເລັດ"}`);
+      } catch (err: any) {
+        console.warn("Auto accent learning background sync error:", err);
+      } finally {
+        setIsTeachingAI(false);
       }
-    } catch (err: any) {
-      console.error(err);
-      showToast(`❌ ຂໍ້ຜິດພາດ: ${err.message || "ເກີດຂໍ້ຜິດພາດໃນການສອນ AI"}`);
-    } finally {
-      setIsTeachingAI(false);
-    }
-  };
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [subtitles, initialSubtitles, selectedDialect, selectedLanguage, currentUser]);
 
   const handleTranslateSubtitles = async () => {
     if (subtitles.length === 0) {
@@ -1101,6 +1111,7 @@ export default function SubtitleStudioPage() {
         const parsed = JSON.parse(draft);
         if (Array.isArray(parsed.subtitles)) {
           setSubtitles(parsed.subtitles);
+          setInitialSubtitles(parsed.subtitles);
           if (parsed.fontFamily) setFontFamily(parsed.fontFamily);
           if (parsed.captionSize) setCaptionSize(parsed.captionSize);
           if (parsed.captionColor) setCaptionColor(parsed.captionColor);
@@ -2116,35 +2127,29 @@ export default function SubtitleStudioPage() {
               </div>
             )}
 
-            {/* AI Accent Learning & Feedback Trainer Card */}
+            {/* AI Accent Auto-Learning Status Card */}
             {subtitles.length > 0 && (
               <div className="mb-3 p-3 rounded-xl bg-gradient-to-r from-[#171A2B] to-[#1D1933] border border-cyan-500/30 flex flex-col gap-2 shadow-sm">
                 <div className="flex items-center justify-between text-xs">
                   <span className="flex items-center gap-1.5 font-bold text-cyan-300">
                     <Brain className="w-4 h-4 text-cyan-400 animate-pulse" />
-                    <span>AI Accent & Dialect Learning (ຮຽນຮູ້ສຳນຽງ)</span>
+                    <span>AI Accent Auto-Learning (ຮຽນຮູ້ສຳນຽງອັດຕະໂນມັດ)</span>
                   </span>
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 font-mono">
                     ຮຽນຮູ້ແລ້ວ {learnedTotal} ຮູບແບບ
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-300 leading-relaxed">
-                  ຫາກ AI ຟັງສຳນຽງ ຫຼື ຄຳສັບໃດຜິດ ທ່ານສາມາດແກ້ໄຂໃນກ່ອງຂໍ້ຄວາມຂ້າງລຸ່ມ ແລ້ວກົດປຸ່ມນີ້ເພື່ອສອນໃຫ້ AI ຈື່ສຳນຽງນີ້ໄວ້ສຳລັບຄລິບຕໍ່ໆໄປ
+                  ລະບົບຈະຮຽນຮູ້ສຳນຽງ ແລະ ການແກ້ໄຂຄຳສັບຂອງທ່ານໂດຍອັດຕະໂນມັດທັນທີທີ່ທ່ານປັບແປງຂໍ້ຄວາມ ເພື່ອໃຫ້ AI ຖອດສຽງຄັ້ງຕໍ່ໄປໄດ້ແມ່ນຍຳຍິ່ງຂຶ້ນ ໂດຍບໍ່ຕ້ອງກົດປຸ່ມໃດໆ
                 </p>
                 <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-700/50">
                   <span className="text-[10px] text-slate-400">
                     ສຳນຽງປະຈຸບັນ: <strong className="text-white">{DIALECT_PROFILES[selectedDialect]?.label || "Auto"}</strong>
                   </span>
-                  <button
-                    type="button"
-                    onClick={handleTeachAIAccent}
-                    disabled={isTeachingAI}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold text-xs shadow-md transition-all disabled:opacity-50"
-                    title="ບັນທຶກການແກ້ໄຂຄຳສັບໃນຄລິບນີ້ ເພື່ອສອນໃຫ້ AI ຈື່ສຳນຽງ ແລະ ຖອດສຽງຄັ້ງໜ້າໄດ້ແມ່ນຍຳຂຶ້ນ"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>{isTeachingAI ? "ກຳລັງສອນ AI..." : "💡 ບັນທຶກໃຫ້ AI ຮຽນຮູ້"}</span>
-                  </button>
+                  <div className="flex items-center gap-1.5 text-[10px] font-medium text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                    <span className={`w-1.5 h-1.5 rounded-full ${isTeachingAI ? "bg-cyan-400 animate-ping" : "bg-emerald-400"}`} />
+                    <span>{isTeachingAI ? "AI ກຳລັງຈື່ຈຳການແກ້ໄຂ..." : "⚡ ຮຽນຮູ້ອັດຕະໂນມັດ (Active)"}</span>
+                  </div>
                 </div>
               </div>
             )}

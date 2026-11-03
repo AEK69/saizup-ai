@@ -482,6 +482,8 @@ export default function EditorPage() {
 
   const [clipLanguage, setClipLanguage] = useState<"th" | "lo" | "en" | "mixed">("lo");
   const [editorDialect, setEditorDialect] = useState<DialectTag>("auto");
+  const [editorInitialSubtitles, setEditorInitialSubtitles] = useState<SubtitleItem[]>([]);
+  const [isEditorTeachingAI, setIsEditorTeachingAI] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState<string>("");
   const [projectTitle, setProjectTitle] = useState("1030");
   const [aiCaptionsEnabled, setAiCaptionsEnabled] = useState(true);
@@ -2689,6 +2691,7 @@ export default function EditorPage() {
         id: `sub_${idx + 1}_${Math.round(sub.time * 100)}`,
       }));
       setSubtitles(uniqueSubtitles);
+      setEditorInitialSubtitles(uniqueSubtitles);
       setAiCaptionsEnabled(true);
 
       if (finalData?.remainingCredits !== undefined && currentUser) {
@@ -2706,6 +2709,52 @@ export default function EditorPage() {
       setSttStepText("");
     }
   };
+
+  // Automated Active Learning: Listen to user subtitle edits in editor and teach AI automatically
+  useEffect(() => {
+    if (subtitles.length === 0 || editorInitialSubtitles.length === 0) return;
+
+    // Detect if there are meaningful text changes between original heard and edited subtitles
+    const hasEdits = subtitles.some((sub, i) => {
+      const orig = editorInitialSubtitles[i];
+      if (!orig) return false;
+      const t1 = orig.text.trim();
+      const t2 = sub.text.trim();
+      return t1.length > 0 && t2.length > 0 && t1 !== t2;
+    });
+
+    if (!hasEdits) return;
+
+    const timer = setTimeout(async () => {
+      setIsEditorTeachingAI(true);
+      try {
+        const res = await fetch("/api/ai/learn-accent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            originalSubtitles: editorInitialSubtitles,
+            editedSubtitles: subtitles,
+            dialect: editorDialect,
+            language: clipLanguage,
+            userEmail: currentUser?.email,
+          }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          setEditorInitialSubtitles(subtitles.map((s) => ({ ...s })));
+          if (data.learnedCount > 0) {
+            showToast(`🧠 AI ຮຽນຮູ້ສຳນຽງຈາກການແກ້ໄຂອັດຕະໂນມັດ (+${data.learnedCount} ຄຳສັບໃໝ່)`);
+          }
+        }
+      } catch (err: any) {
+        console.warn("Editor auto-learning sync error:", err);
+      } finally {
+        setIsEditorTeachingAI(false);
+      }
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [subtitles, editorInitialSubtitles, editorDialect, clipLanguage, currentUser]);
 
   // =========================================================================
   // AI SMART CUTTER / REFERENCE CLIP MATCHING
@@ -3534,7 +3583,10 @@ export default function EditorPage() {
                   <label className="block space-y-1.5">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-slate-300">ສຳນຽງພາກພື້ນ (Regional Accent)</span>
-                      <span className="text-[10px] text-cyan-400">ຮຽນຮູ້ຕາມສຽງຈິງ</span>
+                      <span className="text-[10px] text-emerald-400 flex items-center gap-1 font-medium">
+                        <span className={`w-1.5 h-1.5 rounded-full ${isEditorTeachingAI ? "bg-cyan-400 animate-ping" : "bg-emerald-400"}`} />
+                        {isEditorTeachingAI ? "AI ກຳລັງຈື່ຈຳ..." : "⚡ ຮຽນຮູ້ອັດຕະໂນມັດ"}
+                      </span>
                     </div>
                     <select
                       value={editorDialect}
