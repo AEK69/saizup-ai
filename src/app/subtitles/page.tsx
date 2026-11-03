@@ -552,7 +552,11 @@ export default function SubtitleStudioPage() {
       setStepText("ກຳລັງຕັດເຊື່ອມຊັບຂ້າມຊ່ວງ (De-duplicating Boundary Overlaps)...");
       const stitchedSubtitles = stitchOverlappingSubtitles(allSubtitles);
       stitchedSubtitles.sort((a, b) => a.time - b.time);
-      setSubtitles(stitchedSubtitles);
+      const uniqueSubtitles = stitchedSubtitles.map((sub, idx) => ({
+        ...sub,
+        id: `sub_${idx + 1}_${Math.round(sub.time * 100)}`,
+      }));
+      setSubtitles(uniqueSubtitles);
       if (finalData?.remainingCredits !== undefined && currentUser) {
         const updated = { ...currentUser, credits: finalData.remainingCredits };
         setCurrentUser(updated);

@@ -2681,7 +2681,11 @@ export default function EditorPage() {
       const stitched = stitchOverlappingSubtitles(allSubs);
       stitched.sort((a, b) => a.time - b.time);
 
-      setSubtitles(stitched);
+      const uniqueSubtitles = stitched.map((sub, idx) => ({
+        ...sub,
+        id: `sub_${idx + 1}_${Math.round(sub.time * 100)}`,
+      }));
+      setSubtitles(uniqueSubtitles);
       setAiCaptionsEnabled(true);
 
       if (finalData?.remainingCredits !== undefined && currentUser) {
