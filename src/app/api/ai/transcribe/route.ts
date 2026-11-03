@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
 
     const {
       language = 'lo',
+      dialect = 'auto',
       audioBase64,
       mimeType = 'audio/wav',
       videoDuration = 15,
@@ -116,6 +117,7 @@ export async function POST(req: NextRequest) {
     try {
       subtitles = await transcribeWithAI({
         language: (language as 'lo' | 'th' | 'en' | 'mixed') || 'lo',
+        dialect: typeof dialect === 'string' ? (dialect as any) : 'auto',
         audioBase64: audioBase64 || '',
         mimeType,
         videoDuration: numDuration,

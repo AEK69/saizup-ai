@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* Hide Next.js dev indicator badge, overlay, and portal permanently */
 #__next-build-watcher,
 #next-logo,
@@ -16,10 +20,6 @@ nextjs-portal {
   height: 0 !important;
   overflow: hidden !important;
 }
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 
 :root {
   /* CapCut Design Tokens */

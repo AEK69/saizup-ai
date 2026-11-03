@@ -29,10 +29,12 @@ import {
   EyeOff,
   Flame,
   ChevronDown,
+  Brain,
 } from "lucide-react";
 import AuthModal from "@/components/auth/AuthModal";
 import { SubtitleItem } from "@/lib/gemini";
 import { extractAudioChunksFromVideoFile, stitchOverlappingSubtitles } from "@/lib/audioExtractor";
+import { DialectTag, DIALECT_PROFILES } from "@/lib/linguistics/accentTypes";
 import {
   exportToASS,
   exportToVTT,
@@ -233,6 +235,10 @@ export default function SubtitleStudioPage() {
   const [savedPresetsLoaded, setSavedPresetsLoaded] = useState(false);
   const [safeAreaPreset, setSafeAreaPreset] = useState<"off" | "tiktok" | "instagram" | "facebook">("off");
   const [customVocabulary, setCustomVocabulary] = useState<string>("");
+  const [selectedDialect, setSelectedDialect] = useState<DialectTag>("auto");
+  const [learnedTotal, setLearnedTotal] = useState<number>(0);
+  const [isTeachingAI, setIsTeachingAI] = useState<boolean>(false);
+  const [initialSubtitles, setInitialSubtitles] = useState<SubtitleItem[]>([]);
   const [loopSentenceEnabled, setLoopSentenceEnabled] = useState<boolean>(false);
   const [activeSentenceId, setActiveSentenceId] = useState<string | null>(null);
   const [audioWaveformBars, setAudioWaveformBars] = useState<number[]>([]);
@@ -265,7 +271,17 @@ export default function SubtitleStudioPage() {
     setTimeout(() => setToastMsg(null), 3500);
   };
 
-  // Sync user from localStorage
+  // Fetch learned dialect intelligence stats on mount
+  useEffect(() => {
+    fetch("/api/ai/accents")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.stats?.totalLearned) {
+          setLearnedTotal(data.stats.totalLearned);
+        }
+      })
+      .catch(() => {});
+  }, []);
   useEffect(() => {
     try {
       const stored = localStorage.getItem("saizup_user");
@@ -506,6 +522,7 @@ export default function SubtitleStudioPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             language: selectedLanguage,
+            dialect: selectedDialect,
             audioBase64: chunk.base64,
             mimeType: chunk.mimeType,
             videoDuration: chunk.duration,
@@ -557,6 +574,7 @@ export default function SubtitleStudioPage() {
         id: `sub_${idx + 1}_${Math.round(sub.time * 100)}`,
       }));
       setSubtitles(uniqueSubtitles);
+      setInitialSubtitles(uniqueSubtitles); // Store initial AI hypotheses for active accent learning diff
       if (finalData?.remainingCredits !== undefined && currentUser) {
         const updated = { ...currentUser, credits: finalData.remainingCredits };
         setCurrentUser(updated);
@@ -603,6 +621,48 @@ export default function SubtitleStudioPage() {
   const updateSubtitleTranslation = (id: string, translatedText: string) => {
     setSubtitles((current) => current.map((subtitle) => subtitle.id === id ? { ...subtitle, translatedText } : subtitle));
     if (translatedText.trim()) setShowTranslation(true);
+  };
+
+  // Continuous Active Learning Feedback Loop:
+  // Teach AI from user subtitle edits and regional accents
+  const handleTeachAIAccent = async () => {
+    if (subtitles.length === 0) {
+      showToast("ຍັງບໍ່ມີຊັບໄຕເຕິລສຳລັບສອນ AI");
+      return;
+    }
+    setIsTeachingAI(true);
+    try {
+      const res = await fetch("/api/ai/learn-accent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          originalSubtitles: initialSubtitles.length > 0 ? initialSubtitles : subtitles,
+          editedSubtitles: subtitles,
+          dialect: selectedDialect,
+          language: selectedLanguage,
+          userEmail: currentUser?.email,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (typeof data.totalLearnedInSystem === "number") {
+          setLearnedTotal(data.totalLearnedInSystem);
+        }
+        setInitialSubtitles([...subtitles]);
+        if (data.learnedCount > 0) {
+          showToast(`🎉 AI ໄດ້ຮຽນຮູ້ ${data.learnedCount} ຄຳສັບ/ສຳນຽງໃໝ່ຈາກຄລິບນີ້ແລ້ວ! (ຖານຂໍ້ມູນລວມ ${data.totalLearnedInSystem} ຮູບແບບ)`);
+        } else {
+          showToast(`💡 ບັນທຶກສຳນຽງຄລິບນີ້ແລ້ວ! AI ຈະນຳໄປປັບປຸງຄວາມແມ່ນຍຳໃນຄັ້ງຕໍ່ໄປ`);
+        }
+      } else {
+        showToast(`⚠️ ${data.error || "ບັນທຶກບໍ່ສຳເລັດ"}`);
+      }
+    } catch (err: any) {
+      console.error(err);
+      showToast(`❌ ຂໍ້ຜິດພາດ: ${err.message || "ເກີດຂໍ້ຜິດພາດໃນການສອນ AI"}`);
+    } finally {
+      setIsTeachingAI(false);
+    }
   };
 
   const handleTranslateSubtitles = async () => {
@@ -1328,7 +1388,14 @@ export default function SubtitleStudioPage() {
           <div className="h-4 w-px bg-slate-700/60" />
 
           <div className="flex items-center gap-2">
-            <img src="/brand/saizup-symbol.png" alt="SAIZUP AI" className="h-7 w-7 object-contain" />
+            <img
+              src="/brand/saizup-symbol.png"
+              alt="SAIZUP AI"
+              width={28}
+              height={28}
+              style={{ width: "28px", height: "28px", maxWidth: "28px", maxHeight: "28px" }}
+              className="h-7 w-7 object-contain"
+            />
             <div>
               <span className="text-sm font-bold text-white">SAIZUP Subtitle Studio</span>
               <span className="hidden sm:inline-block ml-2 text-[10px] px-2 py-0.5 rounded-full bg-[#12E8FF]/15 text-[#12E8FF] font-medium border border-[#12E8FF]/30">
@@ -1800,6 +1867,33 @@ export default function SubtitleStudioPage() {
               </select>
             </div>
 
+            {/* Regional Dialect Selector */}
+            <div className="mb-4">
+              <label className="text-xs font-semibold text-slate-300 mb-2 flex items-center justify-between">
+                <span>ສຳນຽງພາກພື້ນ (Regional Accent):</span>
+                <span className="text-[10px] text-cyan-400 font-medium">ຮຽນຮູ້ຕາມສຽງຈິງ</span>
+              </label>
+              <select
+                value={selectedDialect}
+                onChange={(e) => setSelectedDialect(e.target.value as DialectTag)}
+                className="w-full rounded-xl border border-slate-700 bg-[#161824] px-3 py-2.5 text-sm text-white focus:border-[#12E8FF] focus:outline-none"
+              >
+                <option value="auto">🌐 ກວດຈັບອັດຕະໂນມັດ (Auto Detect Accent)</option>
+                <option value="lo-vte">🇱🇦 ສຳນຽງວຽງຈັນ (Vientiane Standard)</option>
+                <option value="lo-lpq">🇱🇦 ສຳນຽງຫຼວງພະບາງ (Luang Prabang / ເໜືອ)</option>
+                <option value="lo-cps">🇱🇦 ສຳນຽງຈຳປາສັກ (Champasak / ໃຕ້)</option>
+                <option value="lo-xkh">🇱🇦 ສຳນຽງຊຽງຂວາງ (Xieng Khouang / ພວນ)</option>
+                <option value="th-ne">🇹🇭 ສຳນຽງອີສານ (Isan Dialect)</option>
+                <option value="th-c">🇹🇭 ສຳນຽງໄທກາງ (Central Thai)</option>
+                <option value="th-n">🇹🇭 ສຳນຽງຄຳເມືອງ (Northern Kham Mueang)</option>
+                <option value="th-s">🇹🇭 ສຳນຽງປັກໃຕ້ (Southern Thai)</option>
+                <option value="en-loan">📱 ຄຳທັບສັບເຕັກໂນໂລຊີ & ແບຣນ (Tech/Brands)</option>
+              </select>
+              <p className="text-[10px] text-slate-400 mt-1">
+                {DIALECT_PROFILES[selectedDialect]?.description || "AI ຈະປັບໂທນສຽງ ແລະ ວັນນະຍຸດໃຫ້ກົງກັບສຳນຽງທີ່ເລືອກ"}
+              </p>
+            </div>
+
             <details className="mb-4 rounded-xl border border-slate-700 bg-[#161824] group">
               <summary className="cursor-pointer list-none px-3 py-2.5 text-xs font-semibold text-slate-300 flex items-center justify-between">
                 <span>ຕັ້ງຄ່າເພີ່ມເຕີມ</span><ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
@@ -2017,6 +2111,39 @@ export default function SubtitleStudioPage() {
                     title="ເລື່ອນເວລາຊັບທັງໝົດຊ້າລົງ 500ms (+0.5s)"
                   >
                     +0.5s
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* AI Accent Learning & Feedback Trainer Card */}
+            {subtitles.length > 0 && (
+              <div className="mb-3 p-3 rounded-xl bg-gradient-to-r from-[#171A2B] to-[#1D1933] border border-cyan-500/30 flex flex-col gap-2 shadow-sm">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="flex items-center gap-1.5 font-bold text-cyan-300">
+                    <Brain className="w-4 h-4 text-cyan-400 animate-pulse" />
+                    <span>AI Accent & Dialect Learning (ຮຽນຮູ້ສຳນຽງ)</span>
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 font-mono">
+                    ຮຽນຮູ້ແລ້ວ {learnedTotal} ຮູບແບບ
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  ຫາກ AI ຟັງສຳນຽງ ຫຼື ຄຳສັບໃດຜິດ ທ່ານສາມາດແກ້ໄຂໃນກ່ອງຂໍ້ຄວາມຂ້າງລຸ່ມ ແລ້ວກົດປຸ່ມນີ້ເພື່ອສອນໃຫ້ AI ຈື່ສຳນຽງນີ້ໄວ້ສຳລັບຄລິບຕໍ່ໆໄປ
+                </p>
+                <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-700/50">
+                  <span className="text-[10px] text-slate-400">
+                    ສຳນຽງປະຈຸບັນ: <strong className="text-white">{DIALECT_PROFILES[selectedDialect]?.label || "Auto"}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleTeachAIAccent}
+                    disabled={isTeachingAI}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-bold text-xs shadow-md transition-all disabled:opacity-50"
+                    title="ບັນທຶກການແກ້ໄຂຄຳສັບໃນຄລິບນີ້ ເພື່ອສອນໃຫ້ AI ຈື່ສຳນຽງ ແລະ ຖອດສຽງຄັ້ງໜ້າໄດ້ແມ່ນຍຳຂຶ້ນ"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>{isTeachingAI ? "ກຳລັງສອນ AI..." : "💡 ບັນທຶກໃຫ້ AI ຮຽນຮູ້"}</span>
                   </button>
                 </div>
               </div>

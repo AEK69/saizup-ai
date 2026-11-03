@@ -85,6 +85,7 @@ import {
 import Link from "next/link";
 import AuthModal from "@/components/auth/AuthModal";
 import { extractAudioChunksFromVideoFile, stitchOverlappingSubtitles } from "@/lib/audioExtractor";
+import { DialectTag, DIALECT_PROFILES } from "@/lib/linguistics/accentTypes";
 import { ESSENTIAL_SOUND_EFFECTS, playSoundEffect } from "@/lib/soundEffects";
 
 export interface SubtitleItem {
@@ -480,6 +481,7 @@ export default function EditorPage() {
   const [newSavedName, setNewSavedName] = useState<string>("");
 
   const [clipLanguage, setClipLanguage] = useState<"th" | "lo" | "en" | "mixed">("lo");
+  const [editorDialect, setEditorDialect] = useState<DialectTag>("auto");
   const [lastSavedTime, setLastSavedTime] = useState<string>("");
   const [projectTitle, setProjectTitle] = useState("1030");
   const [aiCaptionsEnabled, setAiCaptionsEnabled] = useState(true);
@@ -2637,6 +2639,7 @@ export default function EditorPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             language: clipLanguage,
+            dialect: editorDialect,
             audioBase64: chunk.base64,
             mimeType: chunk.mimeType || "audio/wav",
             videoDuration: chunk.duration,
@@ -2920,7 +2923,14 @@ export default function EditorPage() {
 
           {/* CapCut Studio Logo */}
           <div className="flex items-center gap-1.5">
-            <img src="/brand/saizup-symbol.png" alt="SAIZUP AI" className="h-6 w-6 object-contain" />
+            <img
+              src="/brand/saizup-symbol.png"
+              alt="SAIZUP AI"
+              width={24}
+              height={24}
+              style={{ width: "24px", height: "24px", maxWidth: "24px", maxHeight: "24px" }}
+              className="h-6 w-6 object-contain"
+            />
             <span className="text-xs font-bold tracking-tight text-white hidden md:inline">
               SAIZUP AI Studio
             </span>
@@ -3520,6 +3530,29 @@ export default function EditorPage() {
                       {videoFile ? "ຄລິບພ້ອມແລ້ວ" : "ຍັງບໍ່ມີຄລິບ"}
                     </span>
                   </div>
+
+                  <label className="block space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-300">ສຳນຽງພາກພື້ນ (Regional Accent)</span>
+                      <span className="text-[10px] text-cyan-400">ຮຽນຮູ້ຕາມສຽງຈິງ</span>
+                    </div>
+                    <select
+                      value={editorDialect}
+                      onChange={(e) => setEditorDialect(e.target.value as DialectTag)}
+                      className="w-full rounded-xl border border-slate-700 bg-[#151722] px-3 py-2.5 text-sm text-white focus:border-cyan-400"
+                    >
+                      <option value="auto">🌐 ກວດຈັບອັດຕະໂນມັດ (Auto Detect Accent)</option>
+                      <option value="lo-vte">🇱🇦 ສຳນຽງວຽງຈັນ (Vientiane Standard)</option>
+                      <option value="lo-lpq">🇱🇦 ສຳນຽງຫຼວງພະບາງ (Luang Prabang / ເໜືອ)</option>
+                      <option value="lo-cps">🇱🇦 ສຳນຽງຈຳປາສັກ (Champasak / ໃຕ້)</option>
+                      <option value="lo-xkh">🇱🇦 ສຳນຽງຊຽງຂວາງ (Xieng Khouang / ພວນ)</option>
+                      <option value="th-ne">🇹🇭 ສຳນຽງອີສານ (Isan Dialect)</option>
+                      <option value="th-c">🇹🇭 ສຳນຽງໄທກາງ (Central Thai)</option>
+                      <option value="th-n">🇹🇭 ສຳນຽງຄຳເມືອງ (Northern Kham Mueang)</option>
+                      <option value="th-s">🇹🇭 ສຳນຽງປັກໃຕ້ (Southern Thai)</option>
+                      <option value="en-loan">📱 ຄຳທັບສັບເຕັກໂນໂລຊີ & ແບຣນ (Tech/Brands)</option>
+                    </select>
+                  </label>
 
                   <label className="block space-y-1.5">
                     <span className="text-xs font-semibold text-slate-300">1. ພາສາທີ່ເວົ້າໃນຄລິບ</span>

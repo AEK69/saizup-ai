@@ -1,6 +1,8 @@
 // SAIZUP AI Multimodal Speech-to-Text & Subtitle Engine
 // Backend intelligence engine for Lao, Thai, and Mixed languages
 
+import { AccentMemory, DialectTag } from './linguistics/accentMemory';
+
 export const INTERNAL_AI_KEY =
   process.env.GEMINI_API_KEY || '';
 
@@ -82,6 +84,7 @@ function getGenerationConfig(model: string, temperature: number) {
 
 export interface TranscribeParams {
   language: 'lo' | 'th' | 'en' | 'mixed';
+  dialect?: DialectTag;
   audioBase64?: string;
   mimeType?: string;
   videoDuration?: number;
@@ -129,10 +132,17 @@ export async function transcribeWithAI(
     ? `\nCUSTOM VOCABULARY & ENTITY HINTS: Pay special attention to these terms, brand names, and slang in this clip: "${params.customVocabulary.trim()}". Transcribe them accurately with correct spelling in their intended scripts.\n`
     : '';
 
+  const dialectInstruction = AccentMemory.getDynamicPromptAdditions({
+    language: params.language,
+    dialect: params.dialect || 'auto',
+    customVocabulary: params.customVocabulary,
+  });
+
   const prompt = `You are a professional verbatim Speech-to-Text (STT) transcriber for video subtitles.
 Target language context: ${langDescription}.
 Engine version: ${version.toUpperCase()}
 ${vocabHint}
+${dialectInstruction}
 
 CRITICAL RULES:
 1. VERBATIM SPEECH ONLY: Transcribe ONLY words that are audibly spoken by a human in this audio. Never summarize, extrapolate, invent, or guess.

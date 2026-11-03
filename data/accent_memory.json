@@ -1,0 +1,218 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-11-03T17:13:53.649Z",
+  "totalCorrectionsLearned": 21,
+  "learnedMappings": [
+    {
+      "id": "seed_lo_lpq_1",
+      "originalHeard": "ໃຫ້",
+      "correctedText": "ເຫີ",
+      "dialect": "lo-lpq",
+      "language": "lo",
+      "frequency": 15,
+      "confidence": 0.95,
+      "lastSeenAt": "2026-11-01T00:00:00Z"
+    },
+    {
+      "id": "seed_lo_lpq_2",
+      "originalHeard": "ຂ້ອຍ",
+      "correctedText": "ຂ້ານ້ອຍ",
+      "dialect": "lo-lpq",
+      "language": "lo",
+      "frequency": 22,
+      "confidence": 0.98,
+      "lastSeenAt": "2026-11-01T00:00:00Z"
+    },
+    {
+      "id": "seed_lo_lpq_3",
+      "originalHeard": "ຫັ້ນເດີ",
+      "correctedText": "ຫັ້ນເນີ",
+      "dialect": "lo-lpq",
+      "language": "lo",
+      "frequency": 12,
+      "confidence": 0.92,
+      "lastSeenAt": "2026-11-01T00:00:00Z"
+    },
+    {
+      "id": "seed_lo_cps_1",
+      "originalHeard": "ເປັນຈັ່ງຊັ້ນ",
+      "correctedText": "ກະຈັ່ງຊັ້ນ",
+      "dialect": "lo-cps",
+      "language": "lo",
+      "frequency": 28,
+      "confidence": 0.96,
+      "lastSeenAt": "2026-11-01T00:00:00Z"
+    },
+    {
+      "id": "seed_lo_cps_2",
+      "originalHeard": "ໄປໃສແນ່",
+      "correctedText": "ໄປໃສແດ່",
+      "dialect": "lo-cps",
+      "language": "lo",
+      "frequency": 32,
+      "confidence": 0.99,
+      "lastSeenAt": "2026-11-03T17:13:53.649Z",
+      "contributedBy": "kobx2.2005@gmail.com"
+    },
+    {
+      "id": "seed_lo_cps_3",
+      "originalHeard": "ພຸ້ນນະ",
+      "correctedText": "ພຸ້ນນ່າ",
+      "dialect": "lo-cps",
+      "language": "lo",
+      "frequency": 19,
+      "confidence": 0.94,
+      "lastSeenAt": "2026-11-01T00:00:00Z"
+    },
+    {
+      "id": "seed_th_ne_1",
+      "originalHeard": "ใช่แล้ว",
+      "correctedText": "แม่นแล้ว",
+      "dialect": "th-ne",
+      "language": "th",
+      "frequency": 35,
+      "confidence": 0.99,
+      "lastSeenAt": "2026-11-01T00:00:00Z"
+    },
+    {
+      "id": "seed_th_ne_2",
+      "originalHeard": "น่ารักมาก",
+      "correctedText": "เป็นตาฮัก",
+      "dialect": "th-ne",
+      "language": "th",
+      "frequency": 26,
+      "confidence": 0.97,
+      "lastSeenAt": "2026-11-01T00:00:00Z"
+    },
+    {
+      "id": "seed_th_ne_3",
+      "originalHeard": "ทำไม",
+      "correctedText": "เป็นหยัง",
+      "dialect": "th-ne",
+      "language": "th",
+      "frequency": 30,
+      "confidence": 0.98,
+      "lastSeenAt": "2026-11-01T00:00:00Z"
+    },
+    {
+      "id": "seed_th_ne_4",
+      "originalHeard": "จะไปไหน",
+      "correctedText": "สิไปไส",
+      "dialect": "th-ne",
+      "language": "th",
+      "frequency": 40,
+      "confidence": 0.99,
+      "lastSeenAt": "2026-11-01T00:00:00Z"
+    },
+    {
+      "id": "seed_th_n_1",
+      "originalHeard": "อร่อยมาก",
+      "correctedText": "ลำขนาด",
+      "dialect": "th-n",
+      "language": "th",
+      "frequency": 24,
+      "confidence": 0.96,
+      "lastSeenAt": "2026-11-01T00:00:00Z"
+    },
+    {
+      "id": "seed_th_n_2",
+      "originalHeard": "กินข้าวหรือยัง",
+      "correctedText": "กิ๋นข้าวแล้วกา",
+      "dialect": "th-n",
+      "language": "th",
+      "frequency": 18,
+      "confidence": 0.95,
+      "lastSeenAt": "2026-11-01T00:00:00Z"
+    },
+    {
+      "id": "seed_th_s_1",
+      "originalHeard": "อร่อยมาก",
+      "correctedText": "หรอยจังฮู้",
+      "dialect": "th-s",
+      "language": "th",
+      "frequency": 27,
+      "confidence": 0.97,
+      "lastSeenAt": "2026-11-01T00:00:00Z"
+    },
+    {
+      "id": "seed_th_s_2",
+      "originalHeard": "ทำไมเหรอ",
+      "correctedText": "ไซรนิ",
+      "dialect": "th-s",
+      "language": "th",
+      "frequency": 21,
+      "confidence": 0.94,
+      "lastSeenAt": "2026-11-01T00:00:00Z"
+    },
+    {
+      "id": "seed_th_s_3",
+      "originalHeard": "สบายดีไหม",
+      "correctedText": "บายดีหม้าย",
+      "dialect": "th-s",
+      "language": "th",
+      "frequency": 25,
+      "confidence": 0.96,
+      "lastSeenAt": "2026-11-01T00:00:00Z"
+    },
+    {
+      "id": "seed_en_1",
+      "originalHeard": "ຕິກຕອກ",
+      "correctedText": "TikTok",
+      "dialect": "en-loan",
+      "language": "mixed",
+      "frequency": 85,
+      "confidence": 0.99,
+      "lastSeenAt": "2026-11-02T00:00:00Z"
+    },
+    {
+      "id": "seed_en_2",
+      "originalHeard": "ຕິກຕ໊ອກ",
+      "correctedText": "TikTok",
+      "dialect": "en-loan",
+      "language": "mixed",
+      "frequency": 72,
+      "confidence": 0.99,
+      "lastSeenAt": "2026-11-02T00:00:00Z"
+    },
+    {
+      "id": "seed_en_3",
+      "originalHeard": "ຕັດຕໍ່",
+      "correctedText": "CapCut",
+      "dialect": "en-loan",
+      "language": "mixed",
+      "frequency": 65,
+      "confidence": 0.98,
+      "lastSeenAt": "2026-11-02T00:00:00Z"
+    },
+    {
+      "id": "seed_en_4",
+      "originalHeard": "ບີຊີແອວ",
+      "correctedText": "BCEL One",
+      "dialect": "en-loan",
+      "language": "mixed",
+      "frequency": 90,
+      "confidence": 0.99,
+      "lastSeenAt": "2026-11-02T00:00:00Z"
+    },
+    {
+      "id": "seed_en_5",
+      "originalHeard": "ໄຊຊັບ",
+      "correctedText": "SAIZUP",
+      "dialect": "en-loan",
+      "language": "mixed",
+      "frequency": 95,
+      "confidence": 0.99,
+      "lastSeenAt": "2026-11-02T00:00:00Z"
+    },
+    {
+      "id": "seed_en_6",
+      "originalHeard": "ຊາຍຊັບ",
+      "correctedText": "SAIZUP",
+      "dialect": "en-loan",
+      "language": "mixed",
+      "frequency": 88,
+      "confidence": 0.99,
+      "lastSeenAt": "2026-11-02T00:00:00Z"
+    }
+  ]
+}
