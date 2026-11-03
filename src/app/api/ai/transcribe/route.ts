@@ -125,20 +125,12 @@ export async function POST(req: NextRequest) {
         customVocabulary: typeof customVocabulary === 'string' ? customVocabulary.trim() : undefined,
       });
     } catch (aiErr: any) {
-      console.warn('AI transcription error, falling back gracefully:', aiErr?.message);
-      subtitles = generateSmartFallbackSubtitles({
-        language: (language as 'lo' | 'th' | 'en' | 'mixed') || 'lo',
-        videoDuration: numDuration,
-        intervalMode: intervalMode === '30s' ? '30s' : 'sentence',
-      });
+      console.warn('AI transcription notice:', aiErr?.message);
+      subtitles = [];
     }
 
-    if (!Array.isArray(subtitles) || subtitles.length === 0) {
-      subtitles = generateSmartFallbackSubtitles({
-        language: (language as 'lo' | 'th' | 'en' | 'mixed') || 'lo',
-        videoDuration: numDuration,
-        intervalMode: intervalMode === '30s' ? '30s' : 'sentence',
-      });
+    if (!Array.isArray(subtitles)) {
+      subtitles = [];
     }
 
     if (isLastChunk) {
@@ -155,7 +147,10 @@ export async function POST(req: NextRequest) {
     const targetLang = (language === 'th' ? 'th' : language === 'en' ? 'en' : 'lo') as SupportedLanguage;
 
     // 6. Post-process subtitles with Word Segmentation, Code-Switching & Micro-timestamps
-    const processedSubtitles = subtitles.map((sub, idx) => {
+    const validRawSubtitles = subtitles.filter(
+      (sub) => sub && typeof sub.text === 'string' && sub.text.trim().length > 0
+    );
+    const processedSubtitles = validRawSubtitles.map((sub, idx) => {
       // Keep the model's verbatim words. Script conversion can silently change
       // the speaker's language and make the subtitle disagree with the audio.
       const sanitizedText = String(sub.text || '').trim();

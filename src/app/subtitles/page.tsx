@@ -478,9 +478,9 @@ export default function SubtitleStudioPage() {
         setStepText(`ກຳລັງສະກັດສຽງ ${completed}/${total} ຊ່ວງ (16kHz)...`);
         setGenerationProgress(total > 0 ? Math.round((completed / total) * 10) : 0);
       });
-      const audibleChunks = audioChunks.filter((chunk) => chunk.hasAudio && chunk.base64);
-      if (audibleChunks.length === 0) {
-        throw new Error("ບໍ່ພົບແທຣັກສຽງໃນໄຟລ໌ນີ້ ຫຼື ສຽງເບົາເກີນໄປ");
+      const chunksToProcess = audioChunks.filter((chunk) => chunk.base64 && chunk.duration > 0.2);
+      if (chunksToProcess.length === 0) {
+        throw new Error("ບໍ່ພົບແທຣັກສຽງໃນໄຟລ໌ວິດີໂອນີ້");
       }
 
       // Generate visual waveform bars from audio chunks
@@ -492,15 +492,15 @@ export default function SubtitleStudioPage() {
 
       const allSubtitles: SubtitleItem[] = [];
       let finalData: any = null;
-      const totalAudioDuration = audibleChunks.reduce((sum, chunk) => sum + chunk.duration, 0);
+      const totalAudioDuration = chunksToProcess.reduce((sum, chunk) => sum + chunk.duration, 0);
       let transcribedDuration = 0;
-      setGenerationTotalChunks(audibleChunks.length);
+      setGenerationTotalChunks(chunksToProcess.length);
       setGenerationProgress(10);
       const completedChunkDurationsMs: number[] = [];
-      for (let chunkIndex = 0; chunkIndex < audibleChunks.length; chunkIndex += 1) {
-        const chunk = audibleChunks[chunkIndex];
+      for (let chunkIndex = 0; chunkIndex < chunksToProcess.length; chunkIndex += 1) {
+        const chunk = chunksToProcess[chunkIndex];
         const chunkStartedAt = Date.now();
-        setStepText(`ກຳລັງຟັງຊ່ວງ ${chunkIndex + 1}/${audibleChunks.length} ດ້ວຍ AI ${aiVersion.toUpperCase()} (16kHz Sync)...`);
+        setStepText(`ກຳລັງຟັງຊ່ວງ ${chunkIndex + 1}/${chunksToProcess.length} ດ້ວຍ AI ${aiVersion.toUpperCase()} (16kHz Sync)...`);
         const res = await fetch("/api/ai/transcribe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -511,7 +511,7 @@ export default function SubtitleStudioPage() {
             videoDuration: chunk.duration,
             fullVideoDuration: videoDuration,
             offsetSeconds: chunk.offsetSeconds,
-            isLastChunk: chunkIndex === audibleChunks.length - 1,
+            isLastChunk: chunkIndex === chunksToProcess.length - 1,
             videoTitle: videoFile.name || "Subtitle Project",
             aiVersion,
             intervalMode,
@@ -528,13 +528,15 @@ export default function SubtitleStudioPage() {
           throw new Error("ເຊີເວີສົ່ງຄຳຕອບບໍ່ຖືກຮູບແບບ");
         }
         if (!res.ok || !data.success) throw new Error(data.error || "ຖອດສຽງບໍ່ສຳເລັດ");
-        allSubtitles.push(...data.subtitles);
+        if (Array.isArray(data.subtitles) && data.subtitles.length > 0) {
+          allSubtitles.push(...data.subtitles);
+        }
         completedChunkDurationsMs.push(Date.now() - chunkStartedAt);
         transcribedDuration += chunk.duration;
         setGenerationCompletedChunks(chunkIndex + 1);
         setGenerationCaptionCount(allSubtitles.length);
         setGenerationProgress(10 + Math.round((transcribedDuration / totalAudioDuration) * 85));
-        const remainingChunks = audibleChunks.length - chunkIndex - 1;
+        const remainingChunks = chunksToProcess.length - chunkIndex - 1;
         if (remainingChunks > 0) {
           const averageChunkSeconds = completedChunkDurationsMs.reduce((sum, durationMs) => sum + durationMs, 0) / completedChunkDurationsMs.length / 1000;
           setGenerationEstimatedSeconds(Math.ceil(averageChunkSeconds * remainingChunks + 2));

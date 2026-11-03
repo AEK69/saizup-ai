@@ -120,7 +120,8 @@ export async function extractAudioChunksFromVideoFile(
       }
 
       const vadVoicedRatio = totalFrames > 0 ? voicedFrames / totalFrames : 0;
-      const hasAudio = maxAmplitude > 0.005 && (vadVoicedRatio > 0.015 || maxAmplitude > 0.08);
+      // Generous threshold to protect whisper, soft voices, and speech behind music from being dropped
+      const hasAudio = maxAmplitude > 0.0008 || vadVoicedRatio > 0.005;
 
       chunks.push({
         base64: arrayBufferToBase64(encodePCM16Wav(channelData, targetSampleRate)),
@@ -137,8 +138,8 @@ export async function extractAudioChunksFromVideoFile(
       onProgress?.(chunks.length, totalChunks);
     }
 
-    if (!chunks.some((chunk) => chunk.hasAudio)) {
-      throw new Error('ວິດີໂອນີ້ບໍ່ມີສຽງ ຫຼື ສຽງເບົາເກີນໄປ');
+    if (chunks.length === 0) {
+      throw new Error('ບໍ່ພົບແທຣັກສຽງໃນໄຟລ໌ວິດີໂອ');
     }
 
     return chunks;
@@ -151,7 +152,7 @@ export async function extractAudioChunksFromVideoFile(
 /** Backwards-compatible short-clip extractor used by the video editor. */
 export async function extractAudioFromVideoFile(
   videoFile: File,
-  maxDurationSeconds = 60
+  maxDurationSeconds = 600
 ): Promise<ExtractedAudioResult> {
   const [firstChunk] = await extractAudioChunksFromVideoFile(
     videoFile,
@@ -238,15 +239,19 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 /**
  * Intelligent Subtitle Stitcher & De-duplicator for overlapping chunk boundaries.
  * Merges subtitle arrays from sequential chunks, removing any redundant segments
- * that fall in the overlap window and smoothing time transitions.
+ * that fall in the overlap window and smoothing time transitions without dropping real words.
  */
 export function stitchOverlappingSubtitles<T extends { time: number; endTime: number; text: string }>(
   allSubtitles: T[]
 ): T[] {
   if (allSubtitles.length <= 1) return allSubtitles;
 
+  // Filter out empty or whitespace-only texts
+  const valid = allSubtitles.filter((s) => s && typeof s.text === 'string' && s.text.trim().length > 0);
+  if (valid.length <= 1) return valid;
+
   // Sort strictly by start time
-  const sorted = [...allSubtitles].sort((a, b) => a.time - b.time);
+  const sorted = [...valid].sort((a, b) => a.time - b.time);
   const result: T[] = [];
 
   for (let i = 0; i < sorted.length; i++) {
@@ -254,24 +259,39 @@ export function stitchOverlappingSubtitles<T extends { time: number; endTime: nu
     const prev = result[result.length - 1];
 
     if (!prev) {
-      result.push(current);
+      result.push({ ...current });
       continue;
     }
 
-    // Check for duplicate or heavily overlapping text
     const cleanCur = current.text.replace(/\s+/g, '').toLowerCase();
     const cleanPrev = prev.text.replace(/\s+/g, '').toLowerCase();
     const timeOverlap = Math.min(prev.endTime, current.endTime) - Math.max(prev.time, current.time);
 
-    // Exact or partial duplicate inside overlap boundary window
-    if (timeOverlap > 0.3 && (cleanCur === cleanPrev || cleanPrev.includes(cleanCur) || cleanCur.includes(cleanPrev))) {
+    // Only de-duplicate if the text is identical or nearly identical in an overlapping time window
+    const isExactDuplicate = cleanCur === cleanPrev && timeOverlap > 0.1;
+    const isSubstantialDuplicate =
+      timeOverlap > 0.4 &&
+      cleanCur.length > 8 &&
+      cleanPrev.length > 8 &&
+      (cleanCur.includes(cleanPrev) || cleanPrev.includes(cleanCur));
+
+    if (isExactDuplicate || isSubstantialDuplicate) {
       // Extend previous end time if current is longer, without duplicating line
       prev.endTime = Math.max(prev.endTime, current.endTime);
       continue;
     }
 
-    // Normal non-duplicate item
-    result.push(current);
+    // If times overlap slightly at chunk boundary but words are different:
+    // preserve both, adjusting start time so they chain sequentially
+    const currentCopy = { ...current };
+    if (currentCopy.time < prev.endTime) {
+      if (currentCopy.endTime <= prev.endTime) {
+        currentCopy.endTime = Number((prev.endTime + 1.2).toFixed(2));
+      }
+      currentCopy.time = Number(prev.endTime.toFixed(2));
+    }
+
+    result.push(currentCopy);
   }
 
   return result;

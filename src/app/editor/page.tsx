@@ -84,7 +84,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import AuthModal from "@/components/auth/AuthModal";
-import { extractAudioFromVideoFile } from "@/lib/audioExtractor";
+import { extractAudioChunksFromVideoFile, stitchOverlappingSubtitles } from "@/lib/audioExtractor";
 import { ESSENTIAL_SOUND_EFFECTS, playSoundEffect } from "@/lib/soundEffects";
 
 export interface SubtitleItem {
@@ -2608,12 +2608,12 @@ export default function EditorPage() {
     setIsGeneratingSubtitles(true);
 
     try {
-      setSttStepText("1/2: ກຳລັງສະກັດແທຣັກສຽງແທ້ຈາກວິດີໂອ...");
-      let audioResult = { hasAudio: true, base64: "", mimeType: "audio/wav", duration: duration || 15 };
-      try {
-        audioResult = await extractAudioFromVideoFile(videoFile, 60);
-      } catch (extractErr) {
-        console.warn("Audio extraction fallback:", extractErr);
+      setSttStepText("1/2: ກຳລັງສະກັດແທຣັກສຽງ (16kHz Audio)...");
+      const videoDur = duration > 0 ? duration : Number.POSITIVE_INFINITY;
+      const audioChunks = await extractAudioChunksFromVideoFile(videoFile, 30, videoDur);
+      const chunksToProcess = audioChunks.filter((chunk) => chunk.base64 && chunk.duration > 0.2);
+      if (chunksToProcess.length === 0) {
+        throw new Error("ບໍ່ພົບແທຣັກສຽງໃນໄຟລ໌ວິດີໂອນີ້");
       }
 
       const langLabel =
@@ -2625,55 +2625,72 @@ export default function EditorPage() {
           ? "ພາສາໄທ (Thai)"
           : "English";
 
-      setSttStepText(`2/2: SAIZUP AI Engine (${editorAiVersion.toUpperCase()}) ກຳລັງຟັງສຽງ ແລະ ຖອດຄຳເວົ້າ (${langLabel})...`);
+      const allSubs: SubtitleItem[] = [];
+      let finalData: any = null;
 
-      const res = await fetch("/api/ai/transcribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          language: clipLanguage,
-          audioBase64: audioResult.base64,
-          mimeType: audioResult.mimeType || "audio/wav",
-          videoDuration: audioResult.duration || duration || 15,
-          videoTitle: projectTitle,
-          aiVersion: editorAiVersion,
-          intervalMode: editorIntervalMode,
-          userEmail: currentUser?.email,
-        }),
-      });
+      for (let i = 0; i < chunksToProcess.length; i++) {
+        const chunk = chunksToProcess[i];
+        setSttStepText(`2/2: SAIZUP AI Engine (${editorAiVersion.toUpperCase()}) ກຳລັງຖອດສຽງຊ່ວງ ${i + 1}/${chunksToProcess.length} (${langLabel})...`);
 
-      const resText = await res.text();
-      let data: any = {};
-      try {
-        data = JSON.parse(resText);
-      } catch (jsonErr) {
-        console.error("Non-JSON STT response:", resText);
-        throw new Error("ເຊີເວີບໍ່ໄດ້ສົ່ງ JSON (Invalid server response)");
-      }
+        const res = await fetch("/api/ai/transcribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            language: clipLanguage,
+            audioBase64: chunk.base64,
+            mimeType: chunk.mimeType || "audio/wav",
+            videoDuration: chunk.duration,
+            fullVideoDuration: duration || chunk.duration,
+            offsetSeconds: chunk.offsetSeconds,
+            isLastChunk: i === chunksToProcess.length - 1,
+            videoTitle: projectTitle,
+            aiVersion: editorAiVersion,
+            intervalMode: editorIntervalMode,
+            userEmail: currentUser?.email,
+          }),
+        });
 
-      if (!res.ok || !data.success) {
-        if (data.upgradeRequired) {
-          showToast(`⚠️ ${data.error}`);
-          return;
+        const resText = await res.text();
+        let data: any = {};
+        try {
+          data = JSON.parse(resText);
+        } catch (jsonErr) {
+          console.error("Non-JSON STT response:", resText);
+          throw new Error("ເຊີເວີບໍ່ໄດ້ສົ່ງ JSON (Invalid server response)");
         }
-        throw new Error(data.error || "ຖອດສຽງບໍ່ສຳເລັດ");
+
+        if (!res.ok || !data.success) {
+          if (data.upgradeRequired) {
+            showToast(`⚠️ ${data.error}`);
+            return;
+          }
+          throw new Error(data.error || "ຖອດສຽງບໍ່ສຳເລັດ");
+        }
+
+        if (Array.isArray(data.subtitles) && data.subtitles.length > 0) {
+          allSubs.push(...data.subtitles);
+        }
+        finalData = data;
       }
 
-      if (!data.subtitles || data.subtitles.length === 0) {
-        showToast("⚠️ ບໍ່ພົບຄຳເວົ້າໃນຄລິບສຽງ");
+      if (allSubs.length === 0) {
+        showToast("⚠️ ບໍ່ພົບຄຳເວົ້າໃນຄລິບສຽງ (ມີແຕ່ສຽງດົນຕີ ຫຼື ຄວາມງຽບ)");
         return;
       }
 
-      setSubtitles(data.subtitles);
+      const stitched = stitchOverlappingSubtitles(allSubs);
+      stitched.sort((a, b) => a.time - b.time);
+
+      setSubtitles(stitched);
       setAiCaptionsEnabled(true);
 
-      if (data.remainingCredits !== undefined && currentUser) {
-        const updatedUser = { ...currentUser, credits: data.remainingCredits };
+      if (finalData?.remainingCredits !== undefined && currentUser) {
+        const updatedUser = { ...currentUser, credits: finalData.remainingCredits };
         setCurrentUser(updatedUser);
         localStorage.setItem("saizup_user", JSON.stringify(updatedUser));
       }
 
-      showToast(`🎉 ຖອດສຽງສຳເລັດ! ໄດ້ຊັບ ${data.subtitles.length} ບລັອກ (${data.engine || "AI Engine"})`);
+      showToast(`🎉 ຖອດສຽງສຳເລັດ! ໄດ້ຊັບ ${stitched.length} ບລັອກ (ຈົນຈົບຄລິບ)`);
     } catch (err: any) {
       console.error("STT Error:", err);
       showToast(`❌ ຂໍ້ຜິດພາດ: ${err.message || "ບໍ່ສາມາດຖອດສຽງໄດ້"}`);

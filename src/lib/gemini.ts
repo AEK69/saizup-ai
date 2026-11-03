@@ -129,19 +129,21 @@ export async function transcribeWithAI(
     ? `\nCUSTOM VOCABULARY & ENTITY HINTS: Pay special attention to these terms, brand names, and slang in this clip: "${params.customVocabulary.trim()}". Transcribe them accurately with correct spelling in their intended scripts.\n`
     : '';
 
-  const prompt = `You are a professional Speech-to-Text (STT) transcriber for video subtitles.
+  const prompt = `You are a professional verbatim Speech-to-Text (STT) transcriber for video subtitles.
 Target language context: ${langDescription}.
 Engine version: ${version.toUpperCase()}
 ${vocabHint}
-CRITICAL TASK:
-Transcribe only speech that is actually audible in this audio. This is verbatim speech recognition, not translation, rewriting, summarizing, or guessing. Preserve the speaker's language, code-switching, names, fillers, and repeated words. Never replace Thai with Lao (or Lao with Thai) just because of the selected language. Leave music and silence without subtitles. If a short phrase is genuinely unclear, use [inaudible] instead of inventing words.
 
-LANGUAGE: The selected language is a listening hint, not a translation target. Write every spoken language in its original script.
+CRITICAL RULES:
+1. VERBATIM SPEECH ONLY: Transcribe ONLY words that are audibly spoken by a human in this audio. Never summarize, extrapolate, invent, or guess.
+2. ZERO HALLUCINATION (SILENCE & MUSIC): If there is NO audible human speech in this audio chunk (e.g. only background music, instrumental beats, silence, noise, breathing, or sound effects), you MUST return strictly an empty JSON array: [] . DO NOT generate fake subtitles, do not guess lyrics, and do not repeat template phrases.
+3. PRESERVE ORIGINAL LANGUAGE: Transcribe code-switching (mixed Lao/Thai/English) exactly in the original scripts. Never translate or alter the speaker's language.
+4. WORD-LEVEL TIMESTAMPS: Each item must have audio-aligned "time", "endTime", and word tokens with "startSec" and "endSec" relative to this chunk (duration: ${params.videoDuration || 30}s).
 ${intervalInstruction}
-TIMING: Set each start and end time with sub-second millisecond accuracy (e.g. 1.250). Times are relative to this chunk and must not exceed its duration (${params.videoDuration || 30} seconds).
-WORD TOKENS: Split each subtitle segment into words in the "words" array and include each word's own audio-aligned startSec and endSec (relative to this chunk): [{"text": "word1", "startSec": 0.1, "endSec": 0.4}]. Do not detach Lao/Thai tone marks or vowels above/below from their base consonant.
 
-Output format: Return strictly a valid JSON array of objects:
+OUTPUT FORMAT:
+Return strictly a valid JSON array of objects.
+If speech is present:
 [
   {
     "id": "1",
@@ -151,7 +153,9 @@ Output format: Return strictly a valid JSON array of objects:
     "words": [{"text": "spoken", "startSec": 0.0, "endSec": 0.5}, {"text": "words", "startSec": 0.5, "endSec": 1.0}, {"text": "here", "startSec": 1.0, "endSec": 1.4}]
   }
 ]
-Output ONLY raw JSON, with no markdown code blocks, backticks, or commentary.`;
+If NO speech is present, return ONLY:
+[]
+Output strictly raw JSON without markdown code blocks, backticks, or explanatory text.`;
 
   // Use explicit, current model IDs.  Avoid the moving `*-latest` aliases so
   // customers receive the model promised by their plan.
@@ -214,28 +218,47 @@ Output ONLY raw JSON, with no markdown code blocks, backticks, or commentary.`;
         }
         const rawText = getModelResponseText(data);
 
-        if (rawText) {
+        if (rawText !== undefined && rawText !== null) {
           const cleaned = rawText
             .replace(/```json/g, '')
             .replace(/```/g, '')
             .trim();
 
-          const parsed = JSON.parse(cleaned);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed.map((item: any, idx: number) => ({
+          let parsed: any = null;
+          try {
+            parsed = JSON.parse(cleaned);
+          } catch {
+            const arrMatch = cleaned.match(/\[[\s\S]*\]/);
+            if (arrMatch) {
+              try { parsed = JSON.parse(arrMatch[0]); } catch {}
+            }
+          }
+
+          const itemsArray = Array.isArray(parsed)
+            ? parsed
+            : (Array.isArray(parsed?.subtitles) ? parsed.subtitles : (Array.isArray(parsed?.segments) ? parsed.segments : null));
+
+          if (Array.isArray(itemsArray)) {
+            // Filter out empty items and inaudible tags
+            const validItems = itemsArray.filter(
+              (item: any) => item && typeof item.text === 'string' && item.text.trim().length > 0 && !item.text.includes('[inaudible]')
+            );
+
+            // Successfully received response from model (even if validItems is empty, e.g. silence or music)
+            return validItems.map((item: any, idx: number) => ({
               id: String(item.id || idx + 1),
-              time: Number(item.time) || 0,
-              endTime: Number(item.endTime) || Number(item.time) + 2.5,
-              text: String(item.text || ''),
-              words: Array.isArray(item.words)
-                ? item.words.map((w: any) => ({
-                    text: typeof w === 'string' ? w : w.text || '',
-                    ...(typeof w === 'object' && Number.isFinite(Number(w.startSec)) ? { startSec: Number(w.startSec) } : {}),
-                    ...(typeof w === 'object' && Number.isFinite(Number(w.endSec)) ? { endSec: Number(w.endSec) } : {}),
-                  }))
-                : String(item.text || '')
-                    .split(/\s+/)
-                    .map((t) => ({ text: t })),
+              time: Math.max(0, Number(item.time) || 0),
+              endTime: Math.max(Number(item.time) || 0, Number(item.endTime) || Number(item.time) + 2.0),
+              text: String(item.text || '').trim(),
+              words: Array.isArray(item.words) && item.words.length > 0
+                ? item.words
+                    .filter((w: any) => (typeof w === 'string' ? w.trim() : w?.text?.trim()))
+                    .map((w: any) => ({
+                      text: typeof w === 'string' ? w.trim() : String(w.text || '').trim(),
+                      ...(typeof w === 'object' && Number.isFinite(Number(w.startSec)) ? { startSec: Number(w.startSec) } : {}),
+                      ...(typeof w === 'object' && Number.isFinite(Number(w.endSec)) ? { endSec: Number(w.endSec) } : {}),
+                    }))
+                : String(item.text || '').trim().split(/\s+/).filter(Boolean).map((t: string) => ({ text: t })),
             }));
           }
         }
@@ -250,10 +273,10 @@ Output ONLY raw JSON, with no markdown code blocks, backticks, or commentary.`;
     return generateSmartFallbackSubtitles(params);
   }
 
-  // Graceful fallback: If Google API has temporary 503 high load or rate limit 429,
-  // return smart generated subtitles so the user is never blocked with a 500 error.
-  console.warn('AI transcription fallback invoked due to API response:', lastError?.message || 'unavailable');
-  return generateSmartFallbackSubtitles(params);
+  // When real audio was provided and models produced no subtitles or encountered temporary error,
+  // return empty array instead of injecting fake promotional fallback text.
+  console.warn('AI transcription finished without captions:', lastError?.message || 'no audible speech');
+  return [];
 }
 
 // Backward-compatible alias
